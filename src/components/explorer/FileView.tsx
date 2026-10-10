@@ -105,6 +105,7 @@ function FileBody({
   file,
   path,
   repo,
+  gitRef,
   grammar,
   rawUrl,
 }: FileViewProps & { file: FileResponse; grammar: string | null; rawUrl: string }) {
@@ -119,7 +120,14 @@ function FileBody({
       }
       // Markdown documents get the Forge-style Preview / Source / Edit viewer.
       if (grammar === 'markdown') {
-        return <MarkdownFileView file={{ ...file, kind: 'text', content: file.content }} repo={repo} path={path} />;
+        return (
+          <MarkdownFileView
+            file={{ ...file, kind: 'text', content: file.content }}
+            repo={repo}
+            path={path}
+            target={{ repo, path, ref: gitRef, blobSha: file.blob_sha }}
+          />
+        );
       }
       return <CodeView content={file.content} grammar={grammar} fileName={fileName(path)} />;
     case 'binary':

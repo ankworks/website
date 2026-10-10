@@ -17,7 +17,7 @@ import { parentPath } from '../../shared/routes';
 import type { FileResponse } from '../../types';
 import CodeView from './CodeView';
 import Markdown from './Markdown';
-import MarkdownEditor from './MarkdownEditor';
+import MarkdownEditor, { type CommitTarget } from './MarkdownEditor';
 import MarkdownToc from './MarkdownToc';
 
 export type MarkdownViewMode = 'preview' | 'source' | 'edit';
@@ -36,9 +36,11 @@ interface MarkdownFileViewProps {
   file: FileResponse & { kind: 'text'; content: string };
   repo: string;
   path: string;
+  /** Commit destination (branch + blob sha); omit to keep editing local-only. */
+  target?: CommitTarget;
 }
 
-export default function MarkdownFileView({ file, repo, path }: MarkdownFileViewProps) {
+export default function MarkdownFileView({ file, repo, path, target }: MarkdownFileViewProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const view = parseMode(searchParams.get('view'));
   const [draftDirty, setDraftDirty] = useState(false);
@@ -148,6 +150,7 @@ export default function MarkdownFileView({ file, repo, path }: MarkdownFileViewP
               initialContent={file.content}
               context={{ repo, commitSha: file.commit_sha, baseDir: parentPath(path) }}
               onDirtyChange={setDraftDirty}
+              target={target}
             />
           </div>
         )}

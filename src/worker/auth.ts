@@ -151,7 +151,7 @@ export async function decryptSession(value: string, secret: string, nowSeconds =
   }
 }
 
-async function readSession(request: Request, env: Env): Promise<SessionPayload | null> {
+export async function readSession(request: Request, env: Env): Promise<SessionPayload | null> {
   if (!env.SESSION_ENCRYPTION_KEY) return null;
   const raw = readCookie(request, SESSION_COOKIE);
   if (!raw) return null;

@@ -72,10 +72,11 @@ async function signedSessionCookie(overrides: Partial<SessionPayload> = {}): Pro
 }
 
 describe('auth routes', () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
+  type FetchMock = ReturnType<typeof vi.fn<[input: RequestInfo | URL, init?: RequestInit], Promise<Response>>>;
+  let fetchMock: FetchMock;
 
   function stubFetch(handler: Handler) {
-    fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    fetchMock = vi.fn<[input: RequestInfo | URL, init?: RequestInit], Promise<Response>>(async (input, init) => {
       const url = new URL(String(input), ORIGIN);
       return handler(url, init);
     });
@@ -83,7 +84,7 @@ describe('auth routes', () => {
   }
 
   beforeEach(() => {
-    fetchMock = vi.fn(async () => json({}, 500));
+    fetchMock = vi.fn<[input: RequestInfo | URL, init?: RequestInit], Promise<Response>>(async () => json({}, 500));
     vi.stubGlobal('fetch', fetchMock);
   });
 

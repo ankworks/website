@@ -43,6 +43,7 @@ import {
 import { sanitizeBranch, sanitizeCommit, sanitizeOrganization, sanitizeRepositoryDetail, sanitizeTag } from './sanitize';
 import { handleOrgProfileReadme, handleRepoRoute } from './explorer';
 import { handleAuthRoute } from './auth';
+import { handleChangesRoute } from './changes';
 import { handleOrganizationActivity, handleOrganizationIssues, handleRepositoryCollaboration, validateRepositoryCollaborationRequest } from './collaboration';
 import { logEvent } from './logging';
 import { requireFilePath, requirePath, requireRef, requireRepo } from './params';
@@ -310,19 +311,31 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
     return response;
   };
 
-  // Auth routes handle their own method gating (login/callback/session are GET,
-  // logout is POST) and manage session cookies — dispatch before the GET-only rule.
-  if (path === '/api/auth/login' || path === '/api/auth/callback' || path === '/api/auth/session' || path === '/api/auth/logout' || path === '/api/auth/permissions') {
-    return complete(await handleAuthRoute(request, env));
-  }
-
-  if (request.method !== 'GET') {
-    const response = errorResponse(405, 'METHOD_NOT_ALLOWED', 'Only GET is supported.');
-    response.headers.set('Allow', 'GET');
-    return complete(response);
-  }
-
   try {
+    // Auth routes handle their own method gating (login/callback/session are
+    // GET, logout is POST) and manage session cookies — dispatch before the
+    // GET-only rule so their errors surface through the shared handler.
+    if (path === '/api/auth/login' || path === '/api/auth/callback' || path === '/api/auth/session' || path === '/api/auth/logout' || path === '/api/auth/permissions') {
+      return complete(await handleAuthRoute(request, env));
+    }
+
+    // Authenticated writes and compare (Milestone C): POST commit/branches,
+    // GET compare. GET /branches passes through to the read-only list route.
+    const changesMatch = /^\/api\/repos\/([^/]+)\/(commit|branches|compare)$/.exec(path);
+    if (changesMatch) {
+      const action = changesMatch[2];
+      const passthrough = action === 'branches' && request.method === 'GET';
+      if (!passthrough) {
+        return complete(await handleChangesRoute(action, changesMatch[1], request, env));
+      }
+    }
+
+    if (request.method !== 'GET') {
+      const response = errorResponse(405, 'METHOD_NOT_ALLOWED', 'Only GET is supported.');
+      response.headers.set('Allow', 'GET');
+      return complete(response);
+    }
+
     if (url.pathname === REPOS_PATH) return complete(await handleRepositoryList(request, env, ctx));
     if (url.pathname === '/api/org') return complete(await handleOrganization(request, env, ctx));
     if (url.pathname === '/api/org/profile-readme') return complete(await handleOrgProfileReadme(request, env, ctx));

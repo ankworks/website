@@ -27,10 +27,11 @@ function sessionBody(overrides: Record<string, unknown> = {}): Record<string, un
 }
 
 describe('AuthMenu', () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
+  type FetchMock = ReturnType<typeof vi.fn<[input: RequestInfo | URL, init?: RequestInit], Promise<Response>>>;
+  let fetchMock: FetchMock;
 
   beforeEach(() => {
-    fetchMock = vi.fn(async () => json({}));
+    fetchMock = vi.fn<[input: RequestInfo | URL, init?: RequestInit], Promise<Response>>(async () => json({}));
     vi.stubGlobal('fetch', fetchMock);
   });
 

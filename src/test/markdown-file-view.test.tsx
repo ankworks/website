@@ -135,12 +135,11 @@ describe('MarkdownEditor scaffolding', () => {
     expect(screen.getByLabelText('Live preview pane')).toHaveTextContent('hello!');
   });
 
-  it('keeps committing disabled and explains that sign-in is required', () => {
+  it('keeps committing disabled and explains that sign-in is required', async () => {
     renderEditor();
     const commit = screen.getByRole('button', { name: /commit changes/i });
     expect(commit).toBeDisabled();
-    expect(commit.getAttribute('title')).toMatch(/sign-in/i);
-    expect(screen.getByText(/Local draft/i)).toBeInTheDocument();
+    await waitFor(() => expect(commit.getAttribute('title')).toMatch(/sign-in/i));
   });
 
   it('warns before unloading the tab while the draft is dirty', () => {

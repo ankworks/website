@@ -306,3 +306,62 @@ export type {
   AuthUser,
   RepoRole,
 } from './auth';
+
+// ---------------------------------------------------------------------------
+// Repository write + compare (Milestone C)
+// ---------------------------------------------------------------------------
+
+/** `POST /api/repos/:repo/commit` request body. */
+export interface CommitRequestBody {
+  message: string;
+  content: string;
+  branch: string;
+  path: string;
+  /** Blob sha of the file being replaced (required when the file exists). */
+  sha?: string;
+}
+
+/** `POST /api/repos/:repo/commit` response. */
+export interface CommitResponse {
+  branch: string;
+  path: string;
+  commit: { sha: string; message: string; html_url: string };
+  content: { sha: string; path: string };
+}
+
+/** `POST /api/repos/:repo/branches` request body. */
+export interface CreateBranchRequestBody {
+  name: string;
+  /** Start point (existing branch name or commit sha). */
+  from: string;
+}
+
+/** `POST /api/repos/:repo/branches` response. */
+export interface CreateBranchResponse {
+  name: string;
+  sha: string;
+}
+
+/** One file in a compare range. */
+export interface CompareFile {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  /** Unified diff patch, truncated to PATCH_MAX_CHARS; null when unavailable. */
+  patch: string | null;
+}
+
+/** `GET /api/repos/:repo/compare?base=&head=` response. */
+export interface CompareResponse {
+  repo: string;
+  base: string;
+  head: string;
+  status: 'ahead' | 'behind' | 'diverged' | 'identical';
+  ahead_by: number;
+  behind_by: number;
+  total_commits: number;
+  html_url: string;
+  files: CompareFile[];
+  fetched_at: string;
+}
