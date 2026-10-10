@@ -45,6 +45,7 @@ import { handleOrgProfileReadme, handleRepoRoute } from './explorer';
 import { handleAuthRoute } from './auth';
 import { handleChangesRoute } from './changes';
 import { handleCollabWrite, isCollabWriteRequest } from './collab-writes';
+import { handleGuestRoute, isModerationRequest } from './guest';
 import { handleOrganizationActivity, handleOrganizationIssues, handleRepositoryCollaboration, validateRepositoryCollaborationRequest } from './collaboration';
 import { logEvent } from './logging';
 import { requireFilePath, requirePath, requireRef, requireRepo } from './params';
@@ -334,6 +335,11 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
     // Collaboration writes (Milestone D): issues, comments, reviews, merges.
     if (isCollabWriteRequest(request.method, path)) {
       return complete(await handleCollabWrite(path, request, env));
+    }
+
+    // Guest submissions and moderation (Milestone E).
+    if (path === '/api/guest/issues' || path === '/api/guest/config' || isModerationRequest(request.method, path)) {
+      return complete(await handleGuestRoute(path, request, env));
     }
 
     if (request.method !== 'GET') {

@@ -17,4 +17,14 @@ export interface Env {
   GITHUB_APP_ID?: string;
   /** GitHub App PEM private key. Server-side only; never used for user writes. */
   GITHUB_APP_PRIVATE_KEY?: string;
+  /** D1 database binding for guest issue moderation (Milestone E). */
+  DB?: D1Database;
+  /** Cloudflare Turnstile secret key for guest submissions. */
+  TURNSTILE_SECRET_KEY?: string;
+  /** Public Turnstile site key rendered in the guest form. */
+  TURNSTILE_SITE_KEY?: string;
+  /** Resend API key for moderation outcome emails (optional). */
+  RESEND_API_KEY?: string;
+  /** Inbox that receives moderation notifications (optional). */
+  MODERATION_NOTIFY_EMAIL?: string;
 }
