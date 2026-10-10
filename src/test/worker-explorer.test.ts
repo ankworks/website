@@ -207,12 +207,14 @@ describe('explorer endpoints (mocked upstream)', () => {
       expect(await response.text()).not.toContain('ghp_secret');
     });
 
-    it('only ever calls api.github.com with redirects disabled', async () => {
+    it('only ever calls api.github.com with redirect handling in manual (allowlist-validated) mode', async () => {
       use(routeCommit(), (url) => (url.pathname === '/repos/ankworks/website/contents' ? json([]) : null));
       await api('/api/repos/website/tree?ref=main');
       for (const [input, init] of fetchMock.mock.calls) {
         expect(new URL(String(input)).origin).toBe('https://api.github.com');
-        expect((init as RequestInit).redirect).toBe('error');
+        // workerd does not implement redirect:"error"; "manual" lets the client
+        // validate redirect targets against the allowlist before following them.
+        expect((init as RequestInit).redirect).toBe('manual');
       }
     });
   });

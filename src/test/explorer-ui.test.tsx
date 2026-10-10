@@ -235,7 +235,7 @@ describe('explorer UI', () => {
       const user = userEvent.setup();
       let fail = true;
       const base = defaultApi();
-      api = (url) => (fail && url.pathname === '/api/repos' ? errorJson(502, 'GITHUB_UNAVAILABLE', 'GitHub API is currently unavailable.') : base(url));
+      api = (url) => (fail && url.pathname === '/api/repos' ? errorJson(502, 'GITHUB_UPSTREAM_ERROR', 'GitHub API is currently unavailable.') : base(url));
       renderAt('/');
       expect(await screen.findByText(/GitHub API is currently unavailable|unavailable/i)).toBeInTheDocument();
       fail = false;

@@ -112,6 +112,110 @@ describe('GET /api/repos handler', () => {
     expect(init.signal).toBeDefined();
   });
 
+  it('uses redirect mode "manual" (workerd rejects redirect:"error" with a TypeError)', async () => {
+    // Regression test for the production 502 GITHUB_UNREACHABLE: workerd's fetch
+    // only implements "follow" and "manual". "error" threw a TypeError before the
+    // request was even sent, and that TypeError was misclassified as a network
+    // failure to GitHub.
+    fetchMock.mockResolvedValueOnce(jsonResponse([]));
+    const response = await handleApiRequest(request(), env);
+    expect(response.status).toBe(200);
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.redirect).toBe('manual');
+  });
+
+  it('follows a redirect that stays inside the allowlisted GitHub paths', async () => {
+    const redirectTarget = 'https://api.github.com/orgs/ankworks/repos?type=public&per_page=100&page=1';
+    fetchMock
+      .mockResolvedValueOnce(new Response(null, { status: 301, headers: { Location: redirectTarget } }))
+      .mockResolvedValueOnce(jsonResponse([rawRepo({ id: 7 })]));
+
+    const response = await handleApiRequest(request(), env);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { repos: Array<{ id: number }> };
+    expect(body.repos).toHaveLength(1);
+    expect(body.repos[0].id).toBe(7);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(2, redirectTarget, expect.anything());
+  });
+
+  it('rejects a redirect to a different origin without following it', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, { status: 301, headers: { Location: 'https://evil.example.test/repos' } })
+    );
+    const response = await handleApiRequest(request(), env);
+    expect(response.status).toBe(502);
+    expect(((await response.json()) as { error: string }).error).toBe('GITHUB_UPSTREAM_ERROR');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a redirect to another GitHub organization without following it', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, { status: 301, headers: { Location: 'https://api.github.com/orgs/other-org/repos' } })
+    );
+    const response = await handleApiRequest(request(), env);
+    expect(response.status).toBe(502);
+    expect(((await response.json()) as { error: string }).error).toBe('GITHUB_UPSTREAM_ERROR');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops following redirects after the maximum number of hops', async () => {
+    for (let i = 0; i < 4; i += 1) {
+      fetchMock.mockResolvedValueOnce(
+        new Response(null, { status: 301, headers: { Location: FIRST_PAGE_URL } })
+      );
+    }
+    const response = await handleApiRequest(request(), env);
+    expect(response.status).toBe(502);
+    expect(((await response.json()) as { error: string }).error).toBe('GITHUB_UPSTREAM_ERROR');
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('maps upstream 429 to GITHUB_RATE_LIMITED with Retry-After', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'rate limited' }, { status: 429, headers: { 'retry-after': '45' } }));
+    const response = await handleApiRequest(request(), env);
+    expect(response.status).toBe(429);
+    expect(response.headers.get('Retry-After')).toBe('45');
+    expect(((await response.json()) as { error: string }).error).toBe('GITHUB_RATE_LIMITED');
+  });
+
+  it('rejects invalid JSON bodies as GITHUB_RESPONSE_INVALID', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response('not-json', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    );
+    const response = await handleApiRequest(request(), env);
+    expect(response.status).toBe(502);
+    expect(((await response.json()) as { error: string }).error).toBe('GITHUB_RESPONSE_INVALID');
+  });
+
+  it('serves fresh data and logs CACHE_ERROR when the cache read throws', async () => {
+    cache.match.mockRejectedValueOnce(new Error('simulated cache failure'));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    fetchMock.mockResolvedValueOnce(jsonResponse([]));
+
+    const response = await handleApiRequest(request(), env);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('X-Cache')).toBe('MISS');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const lines = warnSpy.mock.calls.map((call) => String(call[0]));
+    expect(lines.some((line) => line.includes('"event":"cache_failure"') && line.includes('"code":"CACHE_ERROR"'))).toBe(true);
+    warnSpy.mockRestore();
+  });
+
+  it('serves fresh data and logs CACHE_ERROR when the cache write rejects', async () => {
+    cache.put.mockRejectedValueOnce(new Error('simulated cache failure'));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    fetchMock.mockResolvedValueOnce(jsonResponse([rawRepo({ id: 9 })]));
+
+    const response = await handleApiRequest(request(), env);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('X-Cache')).toBe('MISS');
+    const lines = warnSpy.mock.calls.map((call) => String(call[0]));
+    expect(lines.some((line) => line.includes('"event":"cache_failure"') && line.includes('"stage":"cache_write"'))).toBe(true);
+    warnSpy.mockRestore();
+  });
+
   it('sends the GITHUB_TOKEN secret upstream only, never in the response', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse([rawRepo({ id: 5 })]));
     const response = await handleApiRequest(request(), { ...env, GITHUB_TOKEN: 'unit-test-token-value' });
@@ -184,7 +288,7 @@ describe('GET /api/repos handler', () => {
 
     const response = await handleApiRequest(request(), env);
     expect(response.status).toBe(502);
-    expect(((await response.json()) as { error: string }).error).toBe('INVALID_UPSTREAM_RESPONSE');
+    expect(((await response.json()) as { error: string }).error).toBe('GITHUB_RESPONSE_INVALID');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -217,12 +321,12 @@ describe('GET /api/repos handler', () => {
     expect(new URL(key.url).search).toBe('');
   });
 
-  it('maps GitHub 500 responses to 502 and never caches the error', async () => {
+  it('maps GitHub 500 responses to 502 GITHUB_UPSTREAM_ERROR and never caches the error', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'boom' }, { status: 500 }));
     const response = await handleApiRequest(request(), env);
     expect(response.status).toBe(502);
     expect(response.headers.get('Cache-Control')).toBe('no-store');
-    expect(((await response.json()) as { error: string }).error).toBe('GITHUB_UNAVAILABLE');
+    expect(((await response.json()) as { error: string }).error).toBe('GITHUB_UPSTREAM_ERROR');
     expect(cache.put).not.toHaveBeenCalled();
   });
 
@@ -249,11 +353,11 @@ describe('GET /api/repos handler', () => {
     expect(((await response.json()) as { error: string }).error).toBe('ORG_NOT_FOUND');
   });
 
-  it('maps network failures to 502 GITHUB_UNREACHABLE', async () => {
+  it('maps network failures to 502 GITHUB_NETWORK_ERROR', async () => {
     fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
     const response = await handleApiRequest(request(), env);
     expect(response.status).toBe(502);
-    expect(((await response.json()) as { error: string }).error).toBe('GITHUB_UNREACHABLE');
+    expect(((await response.json()) as { error: string }).error).toBe('GITHUB_NETWORK_ERROR');
   });
 
   it('maps upstream timeouts to 504 GITHUB_TIMEOUT', async () => {
@@ -263,11 +367,11 @@ describe('GET /api/repos handler', () => {
     expect(((await response.json()) as { error: string }).error).toBe('GITHUB_TIMEOUT');
   });
 
-  it('rejects non-array GitHub payloads as invalid upstream responses', async () => {
+  it('rejects non-array GitHub payloads as GITHUB_RESPONSE_INVALID', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ unexpected: true }));
     const response = await handleApiRequest(request(), env);
     expect(response.status).toBe(502);
-    expect(((await response.json()) as { error: string }).error).toBe('INVALID_UPSTREAM_RESPONSE');
+    expect(((await response.json()) as { error: string }).error).toBe('GITHUB_RESPONSE_INVALID');
   });
 
   it('does not return partial data when a later page fails', async () => {
