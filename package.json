@@ -11,8 +11,8 @@
     "lint:fix": "eslint . --ext ts,tsx,js,jsx,json,jsonc --fix",
     "test": "vitest",
     "test:coverage": "vitest --coverage",
- 
     "preview": "vite preview",
+    "deploy": "wrangler pages deploy .vite/deploy --project-name ankworks-website",
     "worker:dev": "wrangler dev",
     "worker:deploy": "wrangler deploy"
   },
