@@ -1,8 +1,11 @@
 # Security headers and cache policy for Workers Static Assets.
-# Applied to static asset responses (API responses set their own headers).
+# Applied to static asset responses (API responses set their own headers in the Worker).
+#
+# img-src must stay in sync with IMAGE_HOSTS in src/shared/markdown-links.ts:
+# README images are only loaded from these hosts.
 
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https://avatars.githubusercontent.com; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data: https://avatars.githubusercontent.com https://raw.githubusercontent.com https://github.com https://user-images.githubusercontent.com https://private-user-images.githubusercontent.com https://objects.githubusercontent.com https://camo.githubusercontent.com https://img.shields.io; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin

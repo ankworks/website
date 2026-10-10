@@ -1,10 +1,11 @@
 /**
- * Browser client for the AnkWorks Worker API (GET /api/repos).
+ * Browser client for the repository list (GET /api/repos).
  *
  * The browser never calls api.github.com directly: the Worker owns the upstream
- * request, caching, pagination, and sanitization.
+ * request, caching, pagination, and sanitization. Other explorer endpoints live
+ * in ./explorer.ts.
  */
-import type { ApiError, OrganizationStats, Repository, RepositoriesResponse } from '../types';
+import type { ApiError, Repository, RepositoriesResponse } from '../types';
 import { normalizeRepository, isValidRepository, sanitizeRepository } from '../shared/repository';
 
 export { normalizeRepository, isValidRepository };
@@ -22,7 +23,8 @@ export class RepositoryApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    readonly code: string
+    readonly code: string,
+    readonly retryAfterSeconds?: number
   ) {
     super(message);
     this.name = 'RepositoryApiError';
@@ -64,10 +66,12 @@ async function fetchRepositoriesFromApi(): Promise<Repository[]> {
 
   if (!response.ok) {
     const apiError = await readErrorMessage(response);
+    const retryAfter = Number(response.headers.get('Retry-After'));
     throw new RepositoryApiError(
       apiError?.message || `Failed to load repositories (HTTP ${response.status}).`,
       response.status,
-      apiError?.error || 'HTTP_ERROR'
+      apiError?.error || 'HTTP_ERROR',
+      Number.isFinite(retryAfter) && retryAfter > 0 ? Math.ceil(retryAfter) : undefined
     );
   }
 
@@ -103,66 +107,6 @@ export async function getRepositories(forceRefresh: boolean = false): Promise<Re
   }
 
   return inflightRequest;
-}
-
-/**
- * Get organization statistics computed from real repository data.
- */
-export async function getOrganizationStats(): Promise<OrganizationStats> {
-  const repos = await getRepositories(false);
-  const nonForkRepos = repos.filter((repo) => !repo.fork);
-
-  const languages: Record<string, number> = {};
-  repos.forEach((repo) => {
-    if (repo.language) {
-      languages[repo.language] = (languages[repo.language] || 0) + 1;
-    }
-  });
-
-  const mostStarred = nonForkRepos.reduce<Repository | null>(
-    (best, repo) => (best === null || repo.stargazers_count > best.stargazers_count ? repo : best),
-    null
-  );
-  const recentlyUpdated = nonForkRepos.reduce<Repository | null>(
-    (best, repo) =>
-      best === null || Date.parse(repo.updated_at) > Date.parse(best.updated_at) ? repo : best,
-    null
-  );
-
-  return {
-    total_repos: repos.length,
-    total_stars: repos.reduce((sum, repo) => sum + repo.stargazers_count, 0),
-    total_forks: repos.reduce((sum, repo) => sum + repo.forks_count, 0),
-    languages,
-    most_starred: mostStarred,
-    recently_updated: recentlyUpdated,
-  };
-}
-
-/**
- * Featured project: the ankworks/browser repository (Aurelia Browser) only when it
- * actually exists in the organization. Otherwise the most-starred public, non-fork repository.
- */
-export async function getFeaturedProject(): Promise<Repository | null> {
-  const repos = await getRepositories(false);
-
-  const browserRepo = repos.find((repo) => repo.full_name.toLowerCase() === 'ankworks/browser');
-  if (browserRepo) {
-    return browserRepo;
-  }
-
-  const candidates = repos.filter((repo) => !repo.fork && !repo.archived);
-  if (candidates.length === 0) return null;
-  return candidates.reduce((prev, current) =>
-    prev.stargazers_count >= current.stargazers_count ? prev : current
-  );
-}
-
-/** Find a repository by name (case-insensitive). */
-export async function getRepositoryByName(name: string): Promise<Repository | null> {
-  const repos = await getRepositories(false);
-  const target = name.toLowerCase();
-  return repos.find((repo) => repo.name.toLowerCase() === target) ?? null;
 }
 
 /** Drop the client cache so the next call refetches from the Worker. */

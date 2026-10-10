@@ -4,95 +4,131 @@
 
 @layer base {
   html {
-    @apply scroll-smooth;
+    color-scheme: dark;
+    -webkit-text-size-adjust: 100%;
   }
-  
+
   body {
-    @apply bg-background text-text font-sans antialiased;
+    @apply bg-background font-sans text-text antialiased;
   }
-  
-  * {
-    @apply border-border;
+
+  ::selection {
+    background-color: rgb(163 230 53 / 0.3);
+    color: #e6edf3;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary/60;
   }
 }
 
 @layer components {
-  .glass-card {
-    @apply bg-surface/50 backdrop-blur-lg border border-border/50 rounded-xl;
-  }
-  
-  .glass-nav {
-    @apply bg-surface/80 backdrop-blur-md border border-border/30;
-  }
-  
-  .btn-primary {
-    @apply bg-primary text-black font-medium px-6 py-3 rounded-lg 
-           hover:bg-primary/90 transition-all duration-200 
-           active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
-  }
-  
-  .btn-secondary {
-    @apply bg-surface text-text font-medium px-6 py-3 rounded-lg border border-border
-           hover:bg-surface/80 transition-all duration-200
-           active:scale-[0.98];
-  }
-  
-  .input-field {
-    @apply bg-surface/50 border border-border/50 rounded-lg px-4 py-3
-           focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/30
-           transition-all duration-200 placeholder:text-text/50;
-  }
-  
-  .link-hover {
-    @apply text-primary/80 hover:text-primary transition-colors duration-200;
+  /* Small bordered button used for actions across the explorer. */
+  .btn-secondary-sm {
+    @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-elevated px-2.5 py-1.5 text-xs font-medium text-text transition-colors hover:border-muted hover:bg-border/40 focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-50;
   }
 }
 
-@layer utilities {
-  .text-gradient {
-    @apply bg-gradient-to-r from-primary/80 to-primary bg-clip-text text-transparent;
-  }
-  
-  .reduce-motion {
-    @apply motion-reduce:transition-none motion-reduce:transform-none;
-  }
+/* Highlight the line targeted by a #L12 link. */
+tr.code-line:target {
+  background-color: rgb(163 230 53 / 0.12);
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* README typography. Mirrors GitHub's structure with this site's palette. */
+.markdown-body {
+  @apply max-w-none break-words text-[15px] leading-7 text-text/90;
 }
 
-::-webkit-scrollbar-track {
-  @apply bg-surface;
+.markdown-body > :first-child {
+  margin-top: 0;
 }
 
-::-webkit-scrollbar-thumb {
-  @apply bg-border/50 rounded-full hover:bg-border;
+.markdown-body .markdown-heading {
+  @apply mb-4 mt-8 scroll-mt-20 font-semibold tracking-tight text-text;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-border;
+.markdown-body h1,
+.markdown-body h2 {
+  @apply border-b border-border pb-2 text-2xl;
 }
 
-/* Selection */
-::selection {
-  @apply bg-primary/30 text-text;
+.markdown-body h3 {
+  @apply text-xl;
 }
 
-/* Focus visible */
-:focus-visible {
-  @apply outline-none ring-2 ring-primary/50;
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  @apply text-base text-muted;
 }
 
-/* Smooth animations for reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
+.markdown-body p,
+.markdown-body ul,
+.markdown-body ol,
+.markdown-body blockquote,
+.markdown-body table,
+.markdown-body pre {
+  @apply mb-4;
+}
+
+.markdown-body ul {
+  @apply list-disc pl-6;
+}
+
+.markdown-body ol {
+  @apply list-decimal pl-6;
+}
+
+.markdown-body li + li {
+  @apply mt-1;
+}
+
+.markdown-body li > ul,
+.markdown-body li > ol {
+  @apply mb-0 mt-1;
+}
+
+.markdown-body a {
+  @apply text-primary underline-offset-2 hover:underline;
+}
+
+.markdown-body code {
+  @apply rounded bg-elevated px-1.5 py-0.5 font-mono text-[85%] text-text;
+}
+
+.markdown-body .markdown-pre {
+  @apply overflow-x-auto rounded-md border border-border bg-background p-4 font-mono text-[13px] leading-6;
+}
+
+.markdown-body .markdown-pre code {
+  @apply bg-transparent p-0 text-[13px];
+}
+
+.markdown-body blockquote {
+  @apply border-l-4 border-border pl-4 text-muted;
+}
+
+.markdown-body hr {
+  @apply my-6 border-border;
+}
+
+.markdown-body table {
+  @apply w-full border-collapse text-sm;
+}
+
+.markdown-body th,
+.markdown-body td {
+  @apply border border-border px-3 py-1.5 text-left align-top;
+}
+
+.markdown-body th {
+  @apply bg-elevated font-medium;
+}
+
+.markdown-body tr:nth-child(2n) td {
+  @apply bg-surface/60;
+}
+
+.markdown-body img {
+  @apply max-w-full;
 }

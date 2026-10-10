@@ -1,11 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  getRepositories,
-  getFeaturedProject,
-  getOrganizationStats,
-  invalidateCache,
-  RepositoryApiError,
-} from '../api/github';
+import { getRepositories, invalidateCache, RepositoryApiError } from '../api/github';
 
 function repo(id: number, overrides: Record<string, unknown> = {}) {
   return {
@@ -25,6 +19,7 @@ function repo(id: number, overrides: Record<string, unknown> = {}) {
     size: 1,
     open_issues_count: 0,
     topics: [],
+    default_branch: 'main',
     ...overrides,
   };
 }
@@ -100,40 +95,7 @@ describe('browser API client (GET /api/repos)', () => {
     await expect(getRepositories()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
   });
 
-  it('returns an empty list for an organization with no public repositories', async () => {
-    fetchMock.mockResolvedValueOnce(okResponse([]));
-    expect(await getRepositories()).toEqual([]);
-    expect(await getFeaturedProject()).toBeNull();
-  });
 
-  it('features ankworks/browser only when it exists in the organization', async () => {
-    fetchMock.mockResolvedValueOnce(
-      okResponse([repo(1, { stargazers_count: 100 }), repo(2, { name: 'browser', full_name: 'ankworks/browser', stargazers_count: 1 })])
-    );
-    expect((await getFeaturedProject())?.full_name).toBe('ankworks/browser');
-  });
 
-  it('falls back to a real repository when ankworks/browser does not exist', async () => {
-    fetchMock.mockResolvedValueOnce(
-      okResponse([repo(1, { stargazers_count: 5 }), repo(2, { stargazers_count: 50, fork: true }), repo(3, { stargazers_count: 9 })])
-    );
-    const featured = await getFeaturedProject();
-    expect(featured?.full_name).toBe('ankworks/repo-3');
-    expect(featured?.full_name).not.toBe('ankworks/browser');
-  });
 
-  it('computes organization statistics from real repository data', async () => {
-    fetchMock.mockResolvedValueOnce(
-      okResponse([
-        repo(1, { stargazers_count: 4, forks_count: 1, language: 'TypeScript' }),
-        repo(2, { stargazers_count: 6, forks_count: 2, language: 'TypeScript' }),
-        repo(3, { stargazers_count: 0, forks_count: 0, language: null }),
-      ])
-    );
-    const stats = await getOrganizationStats();
-    expect(stats.total_repos).toBe(3);
-    expect(stats.total_stars).toBe(10);
-    expect(stats.total_forks).toBe(3);
-    expect(stats.languages).toEqual({ TypeScript: 2 });
-  });
 });
