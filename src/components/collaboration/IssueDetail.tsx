@@ -6,6 +6,7 @@ import { formatDate, formatRelative } from '../../lib/format';
 import { issueListPath } from '../../shared/routes';
 import { CommentIcon, IssueIcon } from '../explorer/icons';
 import { Badge, EmptyState, ErrorState, ExternalLink, Panel, Skeleton, SkeletonRows } from '../explorer/ui';
+import { CommentForm, IssueControls } from './DiscussionActions';
 import IssueMarkdown from './IssueMarkdown';
 import LabelList from './LabelList';
 import Pagination from './Pagination';
@@ -32,6 +33,13 @@ export default function IssueDetail({ repo, number }: { repo: string; number: nu
       ) : issueItem ? (
         <>
           <IssueHeader issue={issueItem} />
+          <IssueControls
+            repo={repo}
+            number={number}
+            state={issueItem.state}
+            labels={issueItem.labels.map((label) => label.name)}
+            onChanged={() => issue.reload()}
+          />
           <Panel aria-label="Issue description" className="p-4 sm:p-6">
             <IssueMarkdown source={issueItem.body ?? ''} label="Issue description" />
           </Panel>
@@ -59,6 +67,7 @@ export default function IssueDetail({ repo, number }: { repo: string; number: nu
                 <Pagination page={page} hasNext={comments.data.has_next} previous={previous} next={next} label="Issue comment pagination" />
               </>
             ) : null}
+            <CommentForm repo={repo} number={number} onPosted={() => { issue.reload(); comments.reload(); }} />
           </section>
         </>
       ) : null}

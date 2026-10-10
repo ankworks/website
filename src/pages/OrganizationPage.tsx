@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react';
 import { Link } from 'react-router-dom';
 import { explorerApi } from '../api/explorer';
 import { getRepositories } from '../api/github';
@@ -8,6 +9,8 @@ import { useAsync } from '../hooks/useAsync';
 import { formatDate, formatExactCount, formatRelative } from '../lib/format';
 import { repoPath } from '../shared/routes';
 import type { Repository } from '../types';
+
+const Markdown = lazy(() => import('../components/explorer/Markdown'));
 
 /** "/" — organization dashboard backed by live public GitHub data. */
 export default function OrganizationPage() {
@@ -97,7 +100,74 @@ export default function OrganizationPage() {
 
         <ActivityFeed />
       </div>
+
+      <OrgProfileReadme />
     </div>
+  );
+}
+
+/**
+ * `ankworks/.github/profile/README.md` rendered below the organization
+ * overview and featured projects. Missing repository/file shows a graceful
+ * fallback; load failures stay quiet with a retry.
+ */
+function OrgProfileReadme() {
+  const state = useAsync('org-profile-readme', () => explorerApi.orgProfileReadme());
+  const errorCode = (state.error as { code?: unknown } | null)?.code;
+
+  return (
+    <section aria-labelledby="profile-readme-heading" id="org-profile-readme" className="min-w-0">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Organization profile</p>
+          <h2 id="profile-readme-heading" className="mt-1 text-lg font-semibold text-text">
+            About AnkWorks
+          </h2>
+          <p className="mt-0.5 font-mono text-xs text-muted">ankworks/.github · profile/README.md</p>
+        </div>
+        {state.status === 'success' && state.data && (
+          <ExternalLink href={state.data.html_url} className="text-sm font-medium text-primary hover:underline">
+            View source on GitHub
+          </ExternalLink>
+        )}
+      </div>
+
+      {state.status === 'loading' || state.status === 'idle' ? (
+        <div className="rounded-lg border border-border bg-surface p-6">
+          <SkeletonRows rows={6} label="Loading the organization profile README" />
+        </div>
+      ) : state.status === 'error' ? (
+        errorCode === 'PROFILE_README_NOT_FOUND' ? (
+          <div className="rounded-lg border border-border bg-surface">
+            <EmptyState title="The organization has not published a profile README.">
+              <ExternalLink href="https://github.com/ankworks/.github" className="text-primary/90 hover:text-primary">
+                View ankworks/.github on GitHub
+              </ExternalLink>
+            </EmptyState>
+          </div>
+        ) : (
+          <ErrorState error={state.error} onRetry={state.reload} compact title="Profile README unavailable" />
+        )
+      ) : state.data ? (
+        state.data.kind === 'text' && state.data.content !== undefined ? (
+          <div className="rounded-lg border border-border bg-surface px-6 py-6 sm:px-8">
+            <Suspense fallback={<SkeletonRows rows={6} label="Rendering the profile README" />}>
+              <Markdown
+                source={state.data.content}
+                name="profile/README.md"
+                context={{ repo: state.data.repo, commitSha: state.data.commit_sha, baseDir: 'profile' }}
+              />
+            </Suspense>
+          </div>
+        ) : (
+          <Notice title="The profile README cannot be displayed">
+            <ExternalLink href={state.data.html_url} className="text-primary/90 hover:text-primary">
+              View the file on GitHub
+            </ExternalLink>
+          </Notice>
+        )
+      ) : null}
+    </section>
   );
 }
 

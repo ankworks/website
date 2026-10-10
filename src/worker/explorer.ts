@@ -29,12 +29,17 @@ import {
   sanitizeCommit,
   sanitizeContentsObject,
   sanitizeEntry,
+  sanitizeRepositoryDetail,
   sortEntries,
 } from './sanitize';
 
 const TTL_SECONDS = 5 * 60;
 const LFS_POINTER_PREFIX = 'version https://git-lfs.github.com/spec/v1';
 const LFS_POINTER_MAX_LENGTH = 1024;
+
+/** Organization profile README: `ankworks/.github` → `profile/README.md`. */
+export const PROFILE_README_REPO = '.github';
+export const PROFILE_README_PATH = 'profile/README.md';
 
 export interface RouteArgs {
   action: string;
@@ -298,5 +303,73 @@ async function handleRaw(args: RouteArgs): Promise<Response> {
         'Cross-Origin-Resource-Policy': 'same-origin',
       },
     });
+  });
+}
+
+/**
+ * Organization profile README: the fixed `ankworks/.github` repository's
+ * `profile/README.md` at its default branch tip.
+ *
+ * The repository and path are constants, not request input, so this is not an
+ * arbitrary GitHub proxy. The repository must exist and be public (fail closed
+ * for anything else). A missing repository or file is a graceful 404
+ * (`PROFILE_README_NOT_FOUND`) so the dashboard can show a quiet fallback.
+ */
+export async function handleOrgProfileReadme(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
+  return serveCached(cacheKeyFor(new URL(request.url).origin, '/api/org/profile-readme'), ctx, async () => {
+    const notFound = (): UpstreamError =>
+      new UpstreamError(404, 'PROFILE_README_NOT_FOUND', 'The organization has not published a profile README.');
+
+    // 1. The `.github` repository must exist, be public, and belong to the org.
+    let repository: unknown;
+    try {
+      const response = await githubGet(buildGitHubUrl(repoApiPath(PROFILE_README_REPO)), env, {
+        notFound: { code: 'PROFILE_README_NOT_FOUND', message: 'The organization has not published a profile README.' },
+      });
+      repository = await readJson(response);
+    } catch (error) {
+      if (error instanceof UpstreamError && error.status === 404) throw notFound();
+      throw error;
+    }
+    const detail = sanitizeRepositoryDetail(repository, PROFILE_README_REPO);
+    if (!detail) throw notFound();
+
+    // 2. Resolve the default branch tip to one exact commit.
+    let commit: CommitSummary;
+    try {
+      commit = await resolveCommit(env, PROFILE_README_REPO, detail.default_branch !== '' ? detail.default_branch : 'main');
+    } catch (error) {
+      // 400 REF_NOT_FOUND (empty repository) and 404 both mean "not published".
+      if (error instanceof UpstreamError && (error.status === 404 || error.status === 400)) throw notFound();
+      throw error;
+    }
+
+    // 3. Read the fixed profile path at that commit.
+    let object: ContentsObject;
+    try {
+      object = await fetchContentsObject(env, PROFILE_README_REPO, PROFILE_README_PATH, commit.sha);
+    } catch (error) {
+      if (error instanceof UpstreamError && (error.status === 404 || error.status === 400)) throw notFound();
+      throw error;
+    }
+    if (object.type !== 'file') throw notFound();
+
+    const base = {
+      repo: PROFILE_README_REPO,
+      path: PROFILE_README_PATH,
+      name: object.name,
+      commit_sha: commit.sha,
+      html_url: githubUrl(PROFILE_README_REPO, 'blob', commit.sha, encodePathSegments(PROFILE_README_PATH)),
+      size: object.size,
+      fetched_at: new Date().toISOString(),
+    };
+    if (object.size > EXPLORER_LIMITS.README_MAX_BYTES || object.encoding !== 'base64' || object.content === null) {
+      return jsonResponse({ ...base, kind: 'too-large' }, TTL_SECONDS);
+    }
+    const classified = classifyContent(decodeBase64(object.content));
+    if (classified.kind === 'text') {
+      return jsonResponse({ ...base, kind: 'text', content: classified.text }, TTL_SECONDS);
+    }
+    return jsonResponse({ ...base, kind: 'binary' }, TTL_SECONDS);
   });
 }

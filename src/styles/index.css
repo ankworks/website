@@ -151,3 +151,46 @@ tr.code-line:target {
 .markdown-body img {
   @apply max-w-full;
 }
+
+/* Sanitized HTML subset: details/summary, kbd, marks, and deletions. */
+.markdown-body details {
+  @apply mb-4 rounded-md border border-border bg-elevated/30 px-4 py-3;
+}
+
+.markdown-body details > summary {
+  @apply cursor-pointer select-none text-sm font-medium text-text;
+}
+
+.markdown-body details[open] > summary {
+  @apply mb-2;
+}
+
+.markdown-body kbd {
+  @apply rounded border border-border bg-elevated px-1.5 py-0.5 font-mono text-[85%] text-text shadow-sm;
+}
+
+.markdown-body mark {
+  @apply bg-primary/20 px-0.5 text-text;
+}
+
+.markdown-body del {
+  @apply text-muted line-through;
+}
+
+.markdown-body ins {
+  @apply underline decoration-primary/60;
+}
+
+.markdown-body .markdown-heading a {
+  @apply text-inherit no-underline;
+}
+
+/* Mermaid diagrams render as sanitized SVG; the source fallback stays readable. */
+.mermaid-diagram svg {
+  @apply mx-auto max-w-full h-auto;
+}
+
+/* Table-of-contents outline beside Markdown previews. */
+.markdown-toc {
+  @apply rounded-md border border-border bg-elevated/30 px-4 py-3;
+}

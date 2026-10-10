@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getRepositories, invalidateCache, RepositoryApiError } from '../api/github';
+import { clearExplorerCache, explorerApi, ExplorerApiError } from '../api/explorer';
 
 function repo(id: number, overrides: Record<string, unknown> = {}) {
   return {
@@ -98,4 +99,57 @@ describe('browser API client (GET /api/repos)', () => {
 
 
 
+});
+
+describe('browser API client (GET /api/org/profile-readme)', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    clearExplorerCache();
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const body = {
+    repo: '.github',
+    path: 'profile/README.md',
+    name: 'README.md',
+    commit_sha: 'a'.repeat(40),
+    html_url: 'https://github.com/ankworks/.github/blob/main/profile/README.md',
+    size: 10,
+    kind: 'text',
+    content: '# AnkWorks',
+    fetched_at: '2026-01-01T00:00:00Z',
+  };
+
+  it('calls the fixed same-origin endpoint and validates the response shape', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    );
+    const readme = await explorerApi.orgProfileReadme();
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/org/profile-readme');
+    expect(readme.content).toBe('# AnkWorks');
+  });
+
+  it('rejects malformed success bodies', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('{"surprise": true}', { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    await expect(explorerApi.orgProfileReadme()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
+
+  it('surfaces the graceful PROFILE_README_NOT_FOUND code for the UI fallback', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'PROFILE_README_NOT_FOUND', message: 'missing', status: 404 }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+    const error = (await explorerApi.orgProfileReadme().catch((e: unknown) => e)) as ExplorerApiError;
+    expect(error).toBeInstanceOf(ExplorerApiError);
+    expect(error.code).toBe('PROFILE_README_NOT_FOUND');
+    expect(error.status).toBe(404);
+  });
 });

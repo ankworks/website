@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router-dom';
 import RepoShell from '../components/explorer/RepoShell';
 import { IssueIcon } from '../components/explorer/icons';
 import IssueList from '../components/collaboration/IssueList';
+import { AdminModerationPanel, GuestIssueForm } from '../components/collaboration/GuestIssueForm';
 
 export default function IssuesPage() {
   const { repo } = useParams();
@@ -17,6 +18,8 @@ export default function IssuesPage() {
         <p className="mt-2 max-w-2xl text-sm text-muted">Public issues across AnkWorks repositories.</p>
         <p className="mt-2 text-xs text-muted"><Link to="/repos" className="text-primary hover:underline">Browse repositories</Link></p>
       </header>
+      <GuestIssueForm />
+      <AdminModerationPanel />
       <IssueList repo={null} />
     </div>
   );

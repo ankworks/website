@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { CommandPalette } from './SearchPage';
 import Navigation from './Navigation';
 import Footer from './Footer';
 
@@ -20,6 +21,7 @@ export default function Layout() {
         Skip to content
       </a>
       <Navigation />
+      <CommandPalette />
       <main id="main" tabIndex={-1} className="flex-1 focus:outline-none">
         <Outlet />
       </main>

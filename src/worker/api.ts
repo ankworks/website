@@ -3,6 +3,7 @@
  *
  * GET /api/repos                              public repositories (sanitized list)
  * GET /api/org                                organization profile
+ * GET /api/org/profile-readme                 organization profile README (fixed path)
  * GET /api/activity?limit=                    public organization activity
  * GET /api/issues and /api/pulls               public organization collaboration search
  * GET /api/repos/:repo                        repository metadata
@@ -40,7 +41,13 @@ import {
   repoApiPath,
 } from './github-client';
 import { sanitizeBranch, sanitizeCommit, sanitizeOrganization, sanitizeRepositoryDetail, sanitizeTag } from './sanitize';
-import { handleRepoRoute } from './explorer';
+import { handleOrgProfileReadme, handleRepoRoute } from './explorer';
+import { handleAuthRoute } from './auth';
+import { handleChangesRoute } from './changes';
+import { handleCollabWrite, isCollabWriteRequest } from './collab-writes';
+import { handleGuestRoute, isModerationRequest } from './guest';
+import { handleNotifications, handleSearch } from './search';
+import { handleHealth, newRequestId, trackApiOutcome } from './ops';
 import { handleOrganizationActivity, handleOrganizationIssues, handleRepositoryCollaboration, validateRepositoryCollaborationRequest } from './collaboration';
 import { logEvent } from './logging';
 import { requireFilePath, requirePath, requireRef, requireRepo } from './params';
@@ -299,24 +306,62 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
   const path = url.pathname;
   logEvent('debug', 'api_request', { method: request.method, path });
 
+  const requestId = newRequestId();
   const complete = (response: Response): Response => {
     logEvent(response.ok ? 'debug' : 'warn', 'api_response', {
       status: response.status,
       durationMs: Date.now() - startedAt,
       path,
+      requestId,
     });
+    trackApiOutcome(response, requestId);
+    response.headers.set('X-Request-Id', requestId);
     return response;
   };
 
-  if (request.method !== 'GET') {
-    const response = errorResponse(405, 'METHOD_NOT_ALLOWED', 'Only GET is supported.');
-    response.headers.set('Allow', 'GET');
-    return complete(response);
-  }
-
   try {
+    // Auth routes handle their own method gating (login/callback/session are
+    // GET, logout is POST) and manage session cookies — dispatch before the
+    // GET-only rule so their errors surface through the shared handler.
+    if (path === '/api/auth/login' || path === '/api/auth/callback' || path === '/api/auth/session' || path === '/api/auth/logout' || path === '/api/auth/permissions') {
+      return complete(await handleAuthRoute(request, env));
+    }
+
+    // Authenticated writes and compare (Milestone C): POST commit/branches,
+    // GET compare. GET /branches passes through to the read-only list route.
+    const changesMatch = /^\/api\/repos\/([^/]+)\/(commit|branches|compare)$/.exec(path);
+    if (changesMatch) {
+      const action = changesMatch[2];
+      const passthrough = action === 'branches' && request.method === 'GET';
+      if (!passthrough) {
+        return complete(await handleChangesRoute(action, changesMatch[1], request, env));
+      }
+    }
+
+    // Collaboration writes (Milestone D): issues, comments, reviews, merges.
+    if (isCollabWriteRequest(request.method, path)) {
+      return complete(await handleCollabWrite(path, request, env));
+    }
+
+    // Guest submissions and moderation (Milestone E).
+    if (path === '/api/guest/issues' || path === '/api/guest/config' || isModerationRequest(request.method, path)) {
+      return complete(await handleGuestRoute(path, request, env));
+    }
+
+    // Search, notifications, and health (Milestone F).
+    if (path === '/api/search') return complete(await handleSearch(request));
+    if (path === '/api/notifications') return complete(await handleNotifications(request, env));
+    if (path === '/api/health') return complete(handleHealth(request));
+
+    if (request.method !== 'GET') {
+      const response = errorResponse(405, 'METHOD_NOT_ALLOWED', 'Only GET is supported.');
+      response.headers.set('Allow', 'GET');
+      return complete(response);
+    }
+
     if (url.pathname === REPOS_PATH) return complete(await handleRepositoryList(request, env, ctx));
     if (url.pathname === '/api/org') return complete(await handleOrganization(request, env, ctx));
+    if (url.pathname === '/api/org/profile-readme') return complete(await handleOrgProfileReadme(request, env, ctx));
     if (url.pathname === '/api/activity') return complete(await handleOrganizationActivity(request, env, ctx));
     if (url.pathname === '/api/issues') return complete(await handleOrganizationIssues('issues', request, env, ctx));
     if (url.pathname === '/api/pulls') return complete(await handleOrganizationIssues('pulls', request, env, ctx));
