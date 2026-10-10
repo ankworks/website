@@ -2,20 +2,9 @@
   "$schema": "https://json.schemastore.org/wrangler.json",
   "name": "ankworks-website",
   "main": "src/worker/index.ts",
+  "assets": {
+    "directory": ".vite/deploy"
+  },
   "compatibility_date": "2024-01-01",
-  "compatibility_flags": ["nodejs_compat"],
-  
-  "vars": {
-    "ORG_NAME": "ankworks"
-  },
-  
-  "send_metrics": false,
-  
-  "triggers": {
-    "crons": []
-  },
-  
-  "observability": {
-    "enabled": false
-  }
+  "compatibility_flags": ["nodejs_compat"]
 }
