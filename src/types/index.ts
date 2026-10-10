@@ -299,3 +299,10 @@ export interface OrgProfileReadmeResponse {
   content?: string;
   fetched_at: string;
 }
+
+export type {
+  AuthPermissionsResponse,
+  AuthSessionResponse,
+  AuthUser,
+  RepoRole,
+} from './auth';

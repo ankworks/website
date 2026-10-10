@@ -42,6 +42,7 @@ import {
 } from './github-client';
 import { sanitizeBranch, sanitizeCommit, sanitizeOrganization, sanitizeRepositoryDetail, sanitizeTag } from './sanitize';
 import { handleOrgProfileReadme, handleRepoRoute } from './explorer';
+import { handleAuthRoute } from './auth';
 import { handleOrganizationActivity, handleOrganizationIssues, handleRepositoryCollaboration, validateRepositoryCollaborationRequest } from './collaboration';
 import { logEvent } from './logging';
 import { requireFilePath, requirePath, requireRef, requireRepo } from './params';
@@ -308,6 +309,12 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
     });
     return response;
   };
+
+  // Auth routes handle their own method gating (login/callback/session are GET,
+  // logout is POST) and manage session cookies — dispatch before the GET-only rule.
+  if (path === '/api/auth/login' || path === '/api/auth/callback' || path === '/api/auth/session' || path === '/api/auth/logout' || path === '/api/auth/permissions') {
+    return complete(await handleAuthRoute(request, env));
+  }
 
   if (request.method !== 'GET') {
     const response = errorResponse(405, 'METHOD_NOT_ALLOWED', 'Only GET is supported.');

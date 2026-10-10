@@ -1,4 +1,5 @@
 import { Link, NavLink, useLocation } from 'react-router-dom';
+import AuthMenu from './AuthMenu';
 import { MenuIcon } from './explorer/icons';
 import ThemeToggle from './ThemeToggle';
 
@@ -42,6 +43,7 @@ export default function Navigation() {
           <span className="hidden items-center gap-1.5 rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-muted sm:inline-flex">
             <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-primary" /> Read-only
           </span>
+          <AuthMenu />
           <ThemeToggle />
           <details className="relative xl:hidden">
             <summary aria-label="Open navigation menu" className="flex h-9 cursor-pointer list-none items-center gap-2 rounded-md border border-border bg-surface px-2.5 text-sm text-text hover:bg-elevated focus-visible:ring-2 focus-visible:ring-primary/60 [&::-webkit-details-marker]:hidden">
