@@ -35,6 +35,7 @@ import {
 } from './github-client';
 import { sanitizeBranch, sanitizeCommit, sanitizeOrganization, sanitizeRepositoryDetail } from './sanitize';
 import { handleRepoRoute } from './explorer';
+import { logEvent } from './logging';
 import { requireRef, requireRepo } from './params';
 
 export { parseNextLink, errorResponse };
@@ -97,8 +98,9 @@ export async function fetchAllPublicRepos(env: Pick<Env, 'GITHUB_TOKEN'>): Promi
     const link = parseNextLink(response.headers.get('link'));
     if (payload.length === 0 || !link) break;
     if (!isAllowedPageUrl(link)) {
-      throw new UpstreamError(502, 'INVALID_UPSTREAM_RESPONSE', 'GitHub API returned an unexpected pagination link.');
+      throw new UpstreamError(502, 'GITHUB_RESPONSE_INVALID', 'GitHub API returned an unexpected pagination link.');
     }
+    logEvent('debug', 'github_pagination', { stage: 'pagination', page: pagesFetched + 1 });
     nextUrl = link;
   }
 
@@ -127,7 +129,7 @@ async function handleOrganization(request: Request, env: Env, ctx?: ExecutionCon
     });
     const org = sanitizeOrganization(await readJson(response));
     if (!org) {
-      throw new UpstreamError(502, 'INVALID_UPSTREAM_RESPONSE', 'GitHub API returned an unexpected response format.');
+      throw new UpstreamError(502, 'GITHUB_RESPONSE_INVALID', 'GitHub API returned an unexpected response format.');
     }
     return jsonResponse({ org, fetched_at: new Date().toISOString() }, CACHE_TTL_SECONDS);
   });
@@ -212,29 +214,58 @@ async function handleRepoScoped(
 /** Entry point for every /api request. Returns an error Response for every failure path. */
 export async function handleApiRequest(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
+  const startedAt = Date.now();
+  const path = url.pathname;
+  logEvent('debug', 'api_request', { method: request.method, path });
+
+  const complete = (response: Response): Response => {
+    logEvent(response.ok ? 'debug' : 'warn', 'api_response', {
+      status: response.status,
+      durationMs: Date.now() - startedAt,
+      path,
+    });
+    return response;
+  };
+
   if (request.method !== 'GET') {
     const response = errorResponse(405, 'METHOD_NOT_ALLOWED', 'Only GET is supported.');
     response.headers.set('Allow', 'GET');
-    return response;
+    return complete(response);
   }
 
   try {
-    if (url.pathname === REPOS_PATH) return await handleRepositoryList(request, env, ctx);
-    if (url.pathname === '/api/org') return await handleOrganization(request, env, ctx);
+    if (url.pathname === REPOS_PATH) return complete(await handleRepositoryList(request, env, ctx));
+    if (url.pathname === '/api/org') return complete(await handleOrganization(request, env, ctx));
 
     const match = /^\/api\/repos\/([^/]+)(?:\/([a-z-]+))?$/.exec(url.pathname);
     if (match) {
-      return await handleRepoScoped(match[1], match[2] ?? '', request, env, ctx);
+      return complete(await handleRepoScoped(match[1], match[2] ?? '', request, env, ctx));
     }
 
-    return errorResponse(404, 'NOT_FOUND', 'API endpoint not found.');
+    return complete(errorResponse(404, 'NOT_FOUND', 'API endpoint not found.'));
   } catch (error) {
     if (error instanceof UpstreamError) {
-      return errorResponse(error.status, error.code, error.message, error.retryAfterSeconds);
+      logEvent('warn', 'api_failure', {
+        stage: 'api',
+        code: error.code,
+        status: error.status,
+        errorName: 'UpstreamError',
+        durationMs: Date.now() - startedAt,
+        path,
+      });
+      return complete(errorResponse(error.status, error.code, error.message, error.retryAfterSeconds));
     }
     // eslint-disable-next-line no-console
     console.error('Unexpected error in API handler', error);
-    return errorResponse(500, 'INTERNAL_ERROR', 'An unexpected error occurred.');
+    logEvent('error', 'api_failure', {
+      stage: 'api',
+      code: 'INTERNAL_ERROR',
+      status: 500,
+      errorName: error instanceof Error ? error.name : typeof error,
+      durationMs: Date.now() - startedAt,
+      path,
+    });
+    return complete(errorResponse(500, 'INTERNAL_ERROR', 'An unexpected error occurred.'));
   }
 }
 

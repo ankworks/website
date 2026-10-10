@@ -5,17 +5,26 @@
  * - Only https://api.github.com with paths under /orgs/ankworks or /repos/ankworks/
  *   can be requested. Arbitrary URLs never reach fetch().
  * - Every request has a timeout; every body read has a byte limit.
+ * - Redirects use "manual" mode: workerd's fetch only implements "follow" and
+ *   "manual" (redirect: "error" throws a TypeError before the request is sent),
+ *   and a redirect is followed only when its target stays inside the same
+ *   allowlist, up to a bounded number of hops.
  * - The optional GITHUB_TOKEN is sent upstream only and never echoed back.
- * - Upstream failures are mapped to explicit, non-sensitive error codes.
+ * - Upstream failures are mapped to explicit, non-sensitive error codes:
+ *   GITHUB_RATE_LIMITED (429), GITHUB_TIMEOUT (504), GITHUB_NETWORK_ERROR (502),
+ *   GITHUB_UPSTREAM_ERROR (502), GITHUB_RESPONSE_INVALID (502).
  */
 import type { ApiError } from '../types';
 import { EXPLORER_LIMITS } from '../shared/limits';
 import { ORG_NAME, isValidRepoName, encodePathSegments } from '../shared/validation';
+import { logEvent } from './logging';
 
 export const GITHUB_API_ORIGIN = 'https://api.github.com';
 const USER_AGENT = 'AnkWorks-Website/1.0 (+https://works.ankb.qzz.io)';
 const GITHUB_API_VERSION = '2022-11-28';
 export const UPSTREAM_TIMEOUT_MS = 8000;
+/** Maximum number of redirects followed for a single logical request. */
+const MAX_REDIRECTS = 3;
 
 /** Error that is safe to return to the browser. */
 export class UpstreamError extends Error {
@@ -120,12 +129,21 @@ function retryAfterFromHeaders(response: Response): number {
   return 60;
 }
 
-export function mapFetchError(error: unknown): UpstreamError {
+type FetchFailureStage = 'upstream_fetch' | 'upstream_body';
+
+/** Map a rejected fetch (or body read) to a safe, explicit upstream error. */
+export function mapFetchError(
+  error: unknown,
+  stage: FetchFailureStage = 'upstream_fetch',
+  durationMs: number | null = null
+): UpstreamError {
   if (error instanceof UpstreamError) return error;
-  if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
-    return new UpstreamError(504, 'GITHUB_TIMEOUT', 'GitHub API did not respond in time. Please try again later.');
-  }
-  return new UpstreamError(502, 'GITHUB_UNREACHABLE', 'Could not reach the GitHub API. Please try again later.');
+  const isTimeout = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+  const mapped = isTimeout
+    ? new UpstreamError(504, 'GITHUB_TIMEOUT', 'GitHub API did not respond in time. Please try again later.')
+    : new UpstreamError(502, 'GITHUB_NETWORK_ERROR', 'Could not reach the GitHub API. Please try again later.');
+  logEvent('warn', 'github_api_failure', { stage, errorName: error instanceof Error ? error.name : typeof error, durationMs, upstreamStatus: null });
+  return mapped;
 }
 
 /** Map a non-OK upstream response to an UpstreamError. */
@@ -139,7 +157,8 @@ export function upstreamErrorFor(response: Response, options: GitHubGetOptions =
     );
   }
   if (response.status === 404) {
-    const notFound = options.notFound ?? { code: 'UPSTREAM_NOT_FOUND', message: 'The requested GitHub resource could not be found.' };
+    const notFound =
+      options.notFound ?? { code: 'UPSTREAM_NOT_FOUND', message: 'The requested GitHub resource could not be found.' };
     return new UpstreamError(404, notFound.code, notFound.message);
   }
   if (response.status === 422 && options.unprocessable) {
@@ -149,9 +168,92 @@ export function upstreamErrorFor(response: Response, options: GitHubGetOptions =
     return new UpstreamError(404, 'REPO_UNAVAILABLE', 'This repository is unavailable.');
   }
   if (response.status >= 500) {
-    return new UpstreamError(502, 'GITHUB_UNAVAILABLE', 'GitHub API is currently unavailable. Please try again later.');
+    return new UpstreamError(502, 'GITHUB_UPSTREAM_ERROR', 'GitHub API is currently unavailable. Please try again later.');
   }
-  return new UpstreamError(502, 'GITHUB_ERROR', `GitHub API returned an unexpected status (${response.status}).`);
+  return new UpstreamError(502, 'GITHUB_UPSTREAM_ERROR', 'GitHub API returned an unexpected response. Please try again later.');
+}
+
+function isRedirectStatus(status: number): boolean {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+}
+
+/**
+ * Validate a redirect target against the same allowlist as buildGitHubUrl.
+ * Relative locations are resolved against the URL that produced them.
+ */
+export function validateGitHubRedirect(location: string | null, fromUrl: string): string | null {
+  if (!location) return null;
+  let url: URL;
+  try {
+    url = new URL(location, fromUrl);
+  } catch {
+    return null;
+  }
+  if (url.origin !== GITHUB_API_ORIGIN || url.username !== '' || url.password !== '') return null;
+  const allowed =
+    url.pathname === `/orgs/${ORG_NAME}` ||
+    url.pathname.startsWith(`/orgs/${ORG_NAME}/`) ||
+    url.pathname.startsWith(`/repos/${ORG_NAME}/`);
+  return allowed ? url.toString() : null;
+}
+
+/**
+ * Perform GET hops until a non-redirect response arrives. Redirects are only
+ * followed when the target stays inside the GitHub allowlist; anything else is
+ * an error. The body of redirect responses is never read.
+ */
+async function fetchGitHub(url: string, headers: Record<string, string>): Promise<Response> {
+  let currentUrl = url;
+  for (let redirects = 0; ; redirects += 1) {
+    const startedAt = Date.now();
+    let response: Response;
+    try {
+      response = await fetch(currentUrl, {
+        method: 'GET',
+        headers,
+        // workerd only implements "follow" and "manual"; "error" would throw a
+        // TypeError before the request is sent. "manual" lets us validate the
+        // redirect target against the allowlist before following it.
+        redirect: 'manual',
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      });
+    } catch (error) {
+      throw mapFetchError(error, 'upstream_fetch', Date.now() - startedAt);
+    }
+    if (!isRedirectStatus(response.status)) return response;
+
+    const location = response.headers.get('location');
+    await response.body?.cancel().catch(() => undefined);
+    if (redirects >= MAX_REDIRECTS) {
+      logEvent('warn', 'github_api_failure', {
+        stage: 'redirect',
+        errorName: 'RedirectLimitExceeded',
+        durationMs: Date.now() - startedAt,
+        upstreamStatus: response.status,
+      });
+      throw new UpstreamError(502, 'GITHUB_UPSTREAM_ERROR', 'GitHub API returned an unexpected redirect.');
+    }
+    const nextUrl = validateGitHubRedirect(location, currentUrl);
+    if (nextUrl === null) {
+      logEvent('warn', 'github_api_failure', {
+        stage: 'redirect',
+        errorName: 'RedirectOutsideAllowlist',
+        durationMs: Date.now() - startedAt,
+        upstreamStatus: response.status,
+      });
+      throw new UpstreamError(502, 'GITHUB_UPSTREAM_ERROR', 'GitHub API returned an unexpected redirect.');
+    }
+    logEvent('debug', 'github_redirect', { stage: 'redirect', redirect: redirects + 1 });
+    currentUrl = nextUrl;
+  }
+}
+
+function pathnameOf(url: string): string {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return '';
+  }
 }
 
 /** Perform an allowlisted GET against the GitHub API. Resolves only for OK responses. */
@@ -169,19 +271,18 @@ export async function githubGet(
     headers.Authorization = `Bearer ${env.GITHUB_TOKEN}`;
   }
 
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: 'GET',
-      headers,
-      redirect: 'error',
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
-  } catch (error) {
-    throw mapFetchError(error);
-  }
+  const startedAt = Date.now();
+  logEvent('debug', 'github_fetch_start', { stage: 'upstream_fetch', upstreamPath: pathnameOf(url) });
+  const response = await fetchGitHub(url, headers);
+  const durationMs = Date.now() - startedAt;
 
   if (!response.ok) {
+    logEvent('warn', 'upstream_status', {
+      stage: 'upstream_fetch',
+      upstreamStatus: response.status,
+      durationMs,
+      upstreamPath: pathnameOf(url),
+    });
     // Drain the body so the connection can be reused; the content is never used.
     await response.body?.cancel().catch(() => undefined);
     throw upstreamErrorFor(response, options);
@@ -213,7 +314,7 @@ export async function readBodyLimited(response: Response, maxBytes: number): Pro
       chunks.push(value);
     }
   } catch (error) {
-    throw mapFetchError(error);
+    throw mapFetchError(error, 'upstream_body');
   }
 
   const bytes = new Uint8Array(total);
@@ -231,20 +332,20 @@ export async function readJson(response: Response, maxBytes = EXPLORER_LIMITS.UP
   try {
     return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
   } catch {
-    throw new UpstreamError(502, 'INVALID_UPSTREAM_RESPONSE', 'GitHub API returned an invalid response.');
+    throw new UpstreamError(502, 'GITHUB_RESPONSE_INVALID', 'GitHub API returned an invalid response.');
   }
 }
 
 export function expectArray(payload: unknown): unknown[] {
   if (!Array.isArray(payload)) {
-    throw new UpstreamError(502, 'INVALID_UPSTREAM_RESPONSE', 'GitHub API returned an unexpected response format.');
+    throw new UpstreamError(502, 'GITHUB_RESPONSE_INVALID', 'GitHub API returned an unexpected response format.');
   }
   return payload;
 }
 
 export function expectObject(payload: unknown): Record<string, unknown> {
   if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
-    throw new UpstreamError(502, 'INVALID_UPSTREAM_RESPONSE', 'GitHub API returned an unexpected response format.');
+    throw new UpstreamError(502, 'GITHUB_RESPONSE_INVALID', 'GitHub API returned an unexpected response format.');
   }
   return payload as Record<string, unknown>;
 }
