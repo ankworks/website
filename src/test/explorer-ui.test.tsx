@@ -478,13 +478,15 @@ describe('explorer UI', () => {
       expect(screen.getByRole('link', { name: /Back to issues/ })).toHaveAttribute('href', '/repos/website/issues');
     });
 
-    it('shows pull request status, changed files, commit history, and comments without mutation controls', async () => {
+    it('shows pull request status, files, commits, and comments, gating mutations behind sign-in', async () => {
       renderAt('/repos/website/pulls/12');
       expect(await screen.findByRole('heading', { name: 'Add collaboration views' })).toBeInTheDocument();
       expect(await screen.findByText('src/App.tsx')).toBeInTheDocument();
       expect(await screen.findByText('Add views')).toBeInTheDocument();
-      expect(await screen.findByText('Posting comments, submitting reviews, and merge actions are disabled in this milestone.')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /merge/i })).toBeNull();
+      // Signed-out viewers get a truthful sign-in gate instead of mutation controls
+      // (one in the account menu, one in the PR management panel).
+      expect((await screen.findAllByText(/Sign in with GitHub/)).length).toBeGreaterThan(0);
+      expect(screen.queryByTestId('merge-button')).toBeNull();
     });
 
     it('lists branches and tags from the repository tab', async () => {

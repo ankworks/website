@@ -6,6 +6,7 @@ import { formatDate, formatExactCount, formatRelative, shortSha } from '../../li
 import { pullRequestListPath, pullRequestPath } from '../../shared/routes';
 import { CommentIcon, CommitIcon, FileIcon, PullRequestIcon } from '../explorer/icons';
 import { EmptyState, ErrorState, ExternalLink, Panel, Skeleton, SkeletonRows } from '../explorer/ui';
+import { CommentForm, PullRequestControls } from './DiscussionActions';
 import IssueMarkdown from './IssueMarkdown';
 import LabelList from './LabelList';
 import Pagination from './Pagination';
@@ -63,6 +64,15 @@ export default function PullRequestDetail({ repo, number }: { repo: string; numb
               <PullCommitsSection result={commits} page={commitsPage.page} invalid={commitsPage.invalid} repo={repo} number={number} params={searchParams} />
               <PullCommentsSection result={comments} page={commentsPage.page} invalid={commentsPage.invalid} repo={repo} number={number} params={searchParams} />
               <ReviewCommentsSection result={reviews} page={reviewPage.page} invalid={reviewPage.invalid} repo={repo} number={number} params={searchParams} />
+              <CommentForm
+                repo={repo}
+                number={number}
+                label="Add a comment to the conversation"
+                onPosted={() => {
+                  pull.reload();
+                  comments.reload();
+                }}
+              />
             </div>
             <aside className="space-y-4">
               <Panel aria-label="Pull request status" className="p-4">
@@ -82,7 +92,12 @@ export default function PullRequestDetail({ repo, number }: { repo: string; numb
                 <div className="mt-3"><LabelList labels={detail.labels} /></div>
                 {detail.labels.length === 0 && <p className="mt-2 text-xs text-muted">No labels</p>}
               </Panel>
-              <NoticeReadOnly />
+              <PullRequestControls
+                repo={repo}
+                number={number}
+                state={detail.state}
+                onChanged={() => pull.reload()}
+              />
             </aside>
           </div>
         </>
@@ -233,6 +248,3 @@ function Fact({ label, value }: { label: string; value: string | null }) {
   return <div className="flex items-center justify-between gap-3"><dt className="text-muted">{label}</dt><dd className="truncate font-mono text-text" title={value ?? undefined}>{value ?? '—'}</dd></div>;
 }
 
-function NoticeReadOnly() {
-  return <Panel className="p-4"><p className="text-sm font-medium text-text">Read-only view</p><p className="mt-1 text-xs leading-5 text-muted">Posting comments, submitting reviews, and merge actions are disabled in this milestone.</p></Panel>;
-}
