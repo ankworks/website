@@ -194,7 +194,7 @@ Only the public repositories of the organization are ever displayed, even when a
 
 ## ☁️ Cloudflare Deployment
 
-The site is deployed as a single Worker (`ankworks-website`) using **Workers Static Assets** with Wrangler 4.
+The site is deployed as a single Worker (`github`, set by `name` in `wrangler.jsonc`) using **Workers Static Assets** with Wrangler 4.
 
 ### How it is wired
 
@@ -230,7 +230,7 @@ npx wrangler deploy --dry-run --outdir .wrangler/dry-run
 
 If the repository is connected through the Cloudflare dashboard:
 
-- The Worker name in the dashboard must be `ankworks-website`, matching `name` in `wrangler.jsonc`. A mismatch (for example a project named `github`) makes the deploy target a different Worker.
+- The Worker name in the dashboard must match `name` in `wrangler.jsonc` (currently `github`). A mismatch makes the deploy target a different Worker.
 - Build command: `npm ci && npm run build`. Deploy command: `npx wrangler deploy`.
 - Node.js version: 22 or 24.
 
