@@ -3,8 +3,13 @@
  *
  * GET /api/repos                              public repositories (sanitized list)
  * GET /api/org                                organization profile
+ * GET /api/activity?limit=                    public organization activity
+ * GET /api/issues and /api/pulls               public organization collaboration search
  * GET /api/repos/:repo                        repository metadata
  * GET /api/repos/:repo/branches?page=         branch list (paginated)
+ * GET /api/repos/:repo/tags?page=             tag list (paginated)
+ * GET /api/repos/:repo/issues/*               issues and comments (read-only)
+ * GET /api/repos/:repo/pulls/*                pull requests and review data (read-only)
  * GET /api/repos/:repo/tree?ref=&path=        directory listing
  * GET /api/repos/:repo/last-commit?ref=&path= latest commit touching a path
  * GET /api/repos/:repo/file?ref=&path=        file contents (size and type limited)
@@ -18,6 +23,7 @@
 
 import { ORG_NAME, parsePositiveInt } from '../shared/validation';
 import type { RepositoriesResponse, Repository } from '../types';
+import type { TagsResponse } from '../types/collaboration';
 import { sanitizeRepository } from '../shared/repository';
 import type { Env } from './env';
 import { cacheKeyFor, serveCached } from './cache';
@@ -33,10 +39,11 @@ import {
   readJson,
   repoApiPath,
 } from './github-client';
-import { sanitizeBranch, sanitizeCommit, sanitizeOrganization, sanitizeRepositoryDetail } from './sanitize';
+import { sanitizeBranch, sanitizeCommit, sanitizeOrganization, sanitizeRepositoryDetail, sanitizeTag } from './sanitize';
 import { handleRepoRoute } from './explorer';
+import { handleOrganizationActivity, handleOrganizationIssues, handleRepositoryCollaboration, validateRepositoryCollaborationRequest } from './collaboration';
 import { logEvent } from './logging';
-import { requireRef, requireRepo } from './params';
+import { requireFilePath, requirePath, requireRef, requireRepo } from './params';
 
 export { parseNextLink, errorResponse };
 
@@ -150,6 +157,16 @@ async function handleRepositoryDetail(repo: string, request: Request, env: Env, 
   });
 }
 
+async function verifyPublicRepository(repo: string, env: Env): Promise<void> {
+  // Check visibility live before every scoped read. This prevents a newly-private
+  // repository's previously public data from being served from a route cache.
+  const response = await githubGet(buildGitHubUrl(repoApiPath(repo)), env, {
+    notFound: { code: 'REPO_NOT_FOUND', message: 'Repository not found.' },
+  });
+  const detail = sanitizeRepositoryDetail(await readJson(response), repo);
+  if (!detail) throw new UpstreamError(404, 'REPO_NOT_FOUND', 'Repository not found.');
+}
+
 async function handleBranches(repo: string, params: URLSearchParams, request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   const page = parsePositiveInt(params.get('page'), 1, 1000);
   const perPage = parsePositiveInt(params.get('per_page'), 50, 100);
@@ -165,6 +182,25 @@ async function handleBranches(repo: string, params: URLSearchParams, request: Re
       .map(sanitizeBranch)
       .filter((branch): branch is NonNullable<typeof branch> => branch !== null);
     return jsonResponse({ branches, page, per_page: perPage, has_next: hasNextPage(response) }, CACHE_TTL_SECONDS);
+  });
+}
+
+async function handleTags(repo: string, params: URLSearchParams, request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
+  const page = parsePositiveInt(params.get('page'), 1, 1000);
+  const perPage = parsePositiveInt(params.get('per_page'), 50, 100);
+  if (page === null || perPage === null) throw new UpstreamError(400, 'INVALID_PARAMETER', 'Invalid pagination parameters.');
+
+  const key = cacheKeyFor(new URL(request.url).origin, `/api/repos/${repo}/tags`, { page, per_page: perPage });
+  return serveCached(key, ctx, async () => {
+    const url = buildGitHubUrl(repoApiPath(repo, '/tags'), { per_page: perPage, page });
+    const response = await githubGet(url, env, {
+      notFound: { code: 'REPO_NOT_FOUND', message: 'Repository not found.' },
+    });
+    const tags = expectArray(await readJson(response))
+      .map(sanitizeTag)
+      .filter((tag): tag is NonNullable<typeof tag> => tag !== null);
+    const body: TagsResponse = { tags, page, per_page: perPage, has_next: hasNextPage(response) };
+    return jsonResponse(body, CACHE_TTL_SECONDS);
   });
 }
 
@@ -188,10 +224,31 @@ async function handleCommits(repo: string, params: URLSearchParams, request: Req
   });
 }
 
-/** Route /api/repos/:repo/* to the explorer handlers. */
+function validateScopedParameters(action: string, number: string | undefined, subresource: string | undefined, params: URLSearchParams): void {
+  if (action === 'issues' || action === 'pulls') {
+    validateRepositoryCollaborationRequest(action, number, subresource, params);
+    return;
+  }
+  if (number !== undefined || subresource !== undefined) throw new UpstreamError(404, 'NOT_FOUND', 'API endpoint not found.');
+
+  if (action === 'branches' || action === 'tags' || action === 'commits') {
+    const page = parsePositiveInt(params.get('page'), 1, action === 'commits' ? 10_000 : 1000);
+    const perPage = parsePositiveInt(params.get('per_page'), action === 'commits' ? 30 : 50, 100);
+    if (page === null || perPage === null) throw new UpstreamError(400, 'INVALID_PARAMETER', 'Invalid pagination parameters.');
+  }
+  if (action === 'commits' || action === 'tree' || action === 'last-commit' || action === 'file' || action === 'readme' || action === 'raw') {
+    requireRef(params);
+  }
+  if (action === 'tree' || action === 'last-commit') requirePath(params);
+  if (action === 'file' || action === 'raw') requireFilePath(params);
+}
+
+/** Route public repository and collaboration reads through the scoped Worker API. */
 async function handleRepoScoped(
   repoSegment: string,
   action: string,
+  number: string | undefined,
+  subresource: string | undefined,
   request: Request,
   env: Env,
   ctx?: ExecutionContext
@@ -206,7 +263,31 @@ async function handleRepoScoped(
   const params = new URL(request.url).searchParams;
 
   if (action === '') return handleRepositoryDetail(repo, request, env, ctx);
+
+  const knownActions = ['branches', 'tags', 'commits', 'tree', 'last-commit', 'file', 'readme', 'raw', 'issues', 'pulls'];
+  if (!knownActions.includes(action)) throw new UpstreamError(404, 'NOT_FOUND', 'API endpoint not found.');
+
+  validateScopedParameters(action, number, subresource, params);
+
+  // A configured GITHUB_TOKEN must never turn a public route into a private-repository proxy.
+  // Verify visibility before consulting any scoped data cache.
+  await verifyPublicRepository(repo, env);
+
+  if (action === 'issues' || action === 'pulls') {
+    return handleRepositoryCollaboration({
+      repo,
+      resource: action,
+      number,
+      subresource,
+      params,
+      request,
+      env,
+      ctx,
+    });
+  }
+  if (number !== undefined || subresource !== undefined) throw new UpstreamError(404, 'NOT_FOUND', 'API endpoint not found.');
   if (action === 'branches') return handleBranches(repo, params, request, env, ctx);
+  if (action === 'tags') return handleTags(repo, params, request, env, ctx);
   if (action === 'commits') return handleCommits(repo, params, request, env, ctx);
   return handleRepoRoute({ action, repo, params, request, env, ctx });
 }
@@ -236,10 +317,13 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
   try {
     if (url.pathname === REPOS_PATH) return complete(await handleRepositoryList(request, env, ctx));
     if (url.pathname === '/api/org') return complete(await handleOrganization(request, env, ctx));
+    if (url.pathname === '/api/activity') return complete(await handleOrganizationActivity(request, env, ctx));
+    if (url.pathname === '/api/issues') return complete(await handleOrganizationIssues('issues', request, env, ctx));
+    if (url.pathname === '/api/pulls') return complete(await handleOrganizationIssues('pulls', request, env, ctx));
 
-    const match = /^\/api\/repos\/([^/]+)(?:\/([a-z-]+))?$/.exec(url.pathname);
+    const match = /^\/api\/repos\/([^/]+)(?:\/([a-z-]+)(?:\/([^/]+)(?:\/([a-z-]+))?)?)?$/.exec(url.pathname);
     if (match) {
-      return complete(await handleRepoScoped(match[1], match[2] ?? '', request, env, ctx));
+      return complete(await handleRepoScoped(match[1], match[2] ?? '', match[3], match[4], request, env, ctx));
     }
 
     return complete(errorResponse(404, 'NOT_FOUND', 'API endpoint not found.'));

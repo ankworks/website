@@ -3,11 +3,11 @@ import { Link } from 'react-router-dom';
 import { useAsync } from '../../hooks/useAsync';
 import { explorerApi } from '../../api/explorer';
 import { isValidRepoName } from '../../shared/validation';
-import { commitsPath, repoPath, treePath } from '../../shared/routes';
+import { branchesPath, commitsPath, issueListPath, pullRequestListPath, repoPath, treePath } from '../../shared/routes';
 import type { RepositoryDetail } from '../../types';
 import { formatDate, formatExactCount, formatRelative } from '../../lib/format';
 import { Badge, ErrorState, ExternalLink, Skeleton } from './ui';
-import { CodeIcon, ForkIcon, HistoryIcon, RepoIcon, StarIcon } from './icons';
+import { BranchIcon, CodeIcon, ForkIcon, HistoryIcon, IssueIcon, PullRequestIcon, RepoIcon, StarIcon } from './icons';
 
 export interface RepoContext {
   detail: RepositoryDetail;
@@ -17,7 +17,7 @@ export interface RepoContext {
 
 interface RepoShellProps {
   repo: string;
-  tab: 'code' | 'commits';
+  tab: 'code' | 'issues' | 'pulls' | 'commits' | 'branches';
   /** Ref in the URL, when the page is ref-specific. */
   gitRef?: string;
   children: (context: RepoContext) => ReactNode;
@@ -109,14 +109,17 @@ export default function RepoShell({ repo, tab, gitRef, children }: RepoShellProp
           </div>
         </dl>
 
-        <nav aria-label="Repository sections" className="-mb-px mt-4 flex gap-1">
+        <nav aria-label="Repository sections" className="-mb-px mt-4 flex max-w-full gap-1 overflow-x-auto whitespace-nowrap">
           <TabLink to={codeHref} active={tab === 'code'} icon={<CodeIcon size={15} />} label="Code" />
-          <TabLink
-            to={commitsPath(detail.name, currentRef)}
-            active={tab === 'commits'}
-            icon={<HistoryIcon size={15} />}
-            label="Commits"
-          />
+          <TabLink to={issueListPath(detail.name)} active={tab === 'issues'} icon={<IssueIcon size={15} />} label="Issues" />
+          <TabLink to={pullRequestListPath(detail.name)} active={tab === 'pulls'} icon={<PullRequestIcon size={15} />} label="Pull Requests" />
+          <TabLink to={commitsPath(detail.name, currentRef)} active={tab === 'commits'} icon={<HistoryIcon size={15} />} label="Commits" />
+          <TabLink to={branchesPath(detail.name)} active={tab === 'branches'} icon={<BranchIcon size={15} />} label="Branches" />
+          {detail.has_wiki ? (
+            <ExternalLink href={`https://github.com/ankworks/${encodeURIComponent(detail.name)}/wiki`} className="-mb-px flex items-center gap-2 border-b-2 border-transparent px-3 py-2 text-sm hover:border-border hover:text-text">Wiki</ExternalLink>
+          ) : (
+            <span aria-disabled="true" title="This repository has not enabled a GitHub Wiki." className="-mb-px flex items-center gap-2 border-b-2 border-transparent px-3 py-2 text-sm text-muted/50">Wiki</span>
+          )}
         </nav>
       </header>
 

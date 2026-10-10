@@ -1,161 +1,138 @@
-# AnkWorks Repository Explorer
+# AnkWorks Forge
 
-A read-only, GitHub-style explorer for the public repositories of the
-[`ankworks`](https://github.com/ankworks) organization, served from
-`https://works.ankb.qzz.io`.
+AnkWorks Forge is a read-only development platform for the public repositories of the [`ankworks`](https://github.com/ankworks) organization, designed for the `works.ankb.qzz.io` domain. GitHub remains the source of truth. This repository is the existing AnkWorks Code Explorer, incrementally expanded rather than replaced; no production deployment is part of this change.
 
-The site lets visitors browse organization repositories, directories, source
-files, README files, branches, and commit history without leaving the AnkWorks
-domain for normal browsing. GitHub stays the source of truth: every page links
-to the matching page on GitHub, and the explorer never writes to a repository.
+## Milestone A
 
-## Features
-
-- **Organization overview (`/`)**: public repositories with description, language, stars, forks, last update, archived state, and default branch. Search (press `/` to focus), sort, language filter, hide forks/archived, loading skeletons, empty and error states.
-- **Repository home (`/repos/:repo`)**: repository metadata, the root directory, and the rendered README.
-- **Directory explorer (`/repos/:repo/tree/:ref/*`)**: breadcrumbs, branch selector, folder/file icons, file sizes, last commit per path, directories before files, empty directories, truncated listings (warning shown), symlinks, submodules.
-- **Source viewer (`/repos/:repo/blob/:ref/*`)**: line numbers with `#L12` anchors, lightweight syntax highlighting (26 languages, lazy-loaded), copy contents, copy permalink (pinned to the commit SHA), raw download, path, size, language detection, horizontal scrolling. Binary files, Git LFS pointers, files over 512 KB, symlinks, and submodules get explicit notices instead of content.
-- **README rendering**: GitHub Flavored Markdown (headings with anchors, tables, code fences, images, relative links, task lists). Raw HTML is never rendered. Relative links navigate inside the explorer; relative images resolve to `raw.githubusercontent.com` at the same commit.
-- **Commit history (`/repos/:repo/commits/:ref?page=N`)**: short SHA, title, author, date, GitHub commit link, page navigation driven by the URL.
-- **About (`/about`)**: organization facts and a description of the explorer.
-
-Routes work on direct navigation and refresh. Unknown addresses show a not-found page.
-
-### Branch names with `/`
-
-Git refs may contain `/` (for example `feature/login`). The ref is one URL
-segment, encoded twice (`feature%252Flogin`). A single `%2F` is not safe: the
-static-asset layer decodes it and redirects. The router decodes the first
-layer, and `decodeRouteRef` (in `src/shared/routes.ts`) decodes the second.
-Path segments inside a repository are encoded per segment, so `/` separators stay
-unambiguous.
+- **Organization dashboard** with the official, locally hosted AnkWorks logo; live public repository, star, and fork totals; featured repositories ranked from current star counts; and recent public organization events.
+- **Repository exploration** with searchable public repositories, source browsing, README rendering, branches, tags, and paginated commit history.
+- **Issues** with organization-wide and repository-specific lists, open/closed/all filters, issue detail, labels, safe Markdown, comments, and pagination.
+- **Pull requests** with organization-wide and repository-specific lists, state filters, detail and lifecycle status, labels, changed files, commits, conversation comments, review comments, and pagination.
+- **Responsive navigation**, dark-first palette, light theme support, keyboard focus states, loading, empty, and error states.
+- **Read-only by design.** No sign-in flow or repository writes are enabled in this milestone. The UI does not simulate authentication.
 
 ## Routes
 
 | URL | Page |
 | --- | --- |
-| `/` | Organization overview and repository list |
-| `/repos/:repo` | Repository home (root directory and README) |
-| `/repos/:repo/tree/:ref/*` | Directory at a branch, tag, or commit |
-| `/repos/:repo/blob/:ref/*` | Source file viewer |
-| `/repos/:repo/commits/:ref` | Commit history (`?page=N`) |
-| `/about` | About AnkWorks and this explorer |
+| `/` | Organization dashboard and recent public activity |
+| `/explore` | Popular and recently updated public repositories |
+| `/repos` | Searchable repository index |
+| `/issues` | Public AnkWorks issues across repositories |
+| `/pulls` | Public AnkWorks pull requests across repositories |
+| `/repos/:repo` | Repository home: source tree and README |
+| `/repos/:repo/tree/:ref/*` | Directory listing at a branch, tag, or commit |
+| `/repos/:repo/blob/:ref/*` | Text source viewer |
+| `/repos/:repo/commits/:ref` | Paginated commit history |
+| `/repos/:repo/branches` | Branches and tags (`?view=tags`) |
+| `/repos/:repo/issues` | Repository issues; `/:number` opens issue details |
+| `/repos/:repo/pulls` | Repository pull requests; `/:number` opens PR details |
+| `/about` | Organization and platform information |
+
+The repository navigation includes Code, Issues, Pull Requests, Commits, Branches, and Wiki. Wiki is linked to GitHub only when that repository has enabled a GitHub Wiki; no unsupported in-app Wiki page is fabricated.
+
+Git refs can contain slashes. The ref is encoded as one route segment (double-encoded where required by Workers Static Assets), separately from the repository path. Ref values also travel in query parameters to the Worker API; they are never naively split on `/`.
 
 ## Worker API
 
-All GitHub requests go through the Worker. The browser never calls
-`api.github.com`. Every endpoint is read-only (`GET` only; other methods return
-`405` with `Allow: GET`).
+The browser calls only same-origin `/api` routes. The Worker calls the GitHub REST API, sanitizes responses, and returns bounded JSON. Every route is read-only; non-GET requests return `405` with `Allow: GET`.
 
-| Endpoint | Purpose | GitHub REST API used |
-| --- | --- | --- |
-| `GET /api/repos` | Public repositories of the organization (all pages) | `GET /orgs/ankworks/repos?type=public` |
-| `GET /api/org` | Organization profile | `GET /orgs/ankworks` |
-| `GET /api/repos/:repo` | Repository metadata | `GET /repos/ankworks/:repo` |
-| `GET /api/repos/:repo/branches?page=N` | Branch list, paginated | `GET /repos/ankworks/:repo/branches` |
-| `GET /api/repos/:repo/tree?ref=R&path=P` | Directory listing | commit resolve + `GET /repos/.../contents/:path?ref=SHA` |
-| `GET /api/repos/:repo/last-commit?ref=R&path=P` | Latest commit touching a path | `GET /repos/.../commits?sha=&path=&per_page=1` |
-| `GET /api/repos/:repo/file?ref=R&path=P` | File metadata and text content (size-limited) | commit resolve + contents API |
-| `GET /api/repos/:repo/readme?ref=R` | Repository README | `GET /repos/.../readme?ref=SHA` |
-| `GET /api/repos/:repo/raw?ref=R&path=P` | Raw file download (attachment) | contents API, raw media type |
-| `GET /api/repos/:repo/commits?ref=R&page=N` | Commit history, paginated | `GET /repos/.../commits?sha=` |
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/org` | Sanitized AnkWorks organization profile |
+| `GET /api/repos` | Public organization repositories, paginated upstream |
+| `GET /api/activity?limit=N` | Recent public organization events |
+| `GET /api/issues?state=&page=` | Organization-wide public issue search |
+| `GET /api/pulls?state=&page=` | Organization-wide public pull-request search |
+| `GET /api/repos/:repo` | Public repository metadata |
+| `GET /api/repos/:repo/branches?page=` | Branches |
+| `GET /api/repos/:repo/tags?page=` | Tags |
+| `GET /api/repos/:repo/commits?ref=&page=` | Commit history |
+| `GET /api/repos/:repo/issues?state=&page=` | Repository issues (pull requests excluded) |
+| `GET /api/repos/:repo/issues/:number` | Issue details |
+| `GET /api/repos/:repo/issues/:number/comments?page=` | Issue comments |
+| `GET /api/repos/:repo/pulls?state=&page=` | Repository pull requests |
+| `GET /api/repos/:repo/pulls/:number` | Pull-request details and lifecycle status |
+| `GET /api/repos/:repo/pulls/:number/files?page=` | Changed files and bounded patches |
+| `GET /api/repos/:repo/pulls/:number/commits?page=` | Pull-request commit history |
+| `GET /api/repos/:repo/pulls/:number/comments?page=` | Pull-request conversation comments |
+| `GET /api/repos/:repo/pulls/:number/review-comments?page=` | Review comments on changed files |
+| `GET /api/repos/:repo/tree?ref=&path=` | Directory contents |
+| `GET /api/repos/:repo/file?ref=&path=` | Bounded text-file contents and file metadata |
+| `GET /api/repos/:repo/readme?ref=` | README contents |
+| `GET /api/repos/:repo/raw?ref=&path=` | Bounded raw attachment |
+| `GET /api/repos/:repo/last-commit?ref=&path=` | Latest commit touching a path |
 
-Refs are resolved to a commit SHA first (`GET /repos/.../commits/{ref}`), and
-all content is read at that SHA, so one page never mixes two revisions.
+Organization-wide Issues and Pull Requests use fixed GitHub Search API queries scoped to `org:ankworks`; no arbitrary GitHub API proxy is exposed. Public event and repository data are sanitized field by field. Issue and PR Markdown skips raw HTML, validates links, and does not fetch embedded images.
 
-### Errors
+## Security and caching
 
-Error bodies have the form `{ "error": CODE, "message": "...", "status": N }`.
-Common codes: `INVALID_REPO`, `INVALID_REF`, `INVALID_PATH`, `MISSING_REF`,
-`REPO_NOT_FOUND`, `REF_NOT_FOUND`, `PATH_NOT_FOUND`, `FILE_NOT_FOUND`,
-`README_NOT_FOUND`, `NOT_A_DIRECTORY`, `IS_DIRECTORY`, `NOT_A_FILE`,
-`FILE_TOO_LARGE` (413), `GITHUB_RATE_LIMITED` (429, with `Retry-After`),
-`GITHUB_TIMEOUT` (504), `GITHUB_UNREACHABLE` / `GITHUB_UNAVAILABLE` /
-`INVALID_UPSTREAM_RESPONSE` (502). Error responses are never cached.
+- The Worker reads only public AnkWorks repositories. Repository visibility is checked live before every repository-scoped request and before consulting its data cache; private or malformed repositories fail closed. Organization-wide activity and issue/PR search always use anonymous GitHub requests, so `GITHUB_TOKEN` cannot reveal private activity or search results.
+- Private repository content is never cached or served. Error responses use `Cache-Control: no-store`; successful repository data is cached only after public-repository validation.
+- The upstream origin is fixed to `https://api.github.com`. Paths are limited to AnkWorks organization/repository resources plus the single fixed `/search/issues` endpoint. Search terms are constructed by the Worker, not accepted from a caller.
+- Cloudflare workerd supports `redirect: 'manual'` and `redirect: 'follow'`, not `redirect: 'error'`. The GitHub client uses **`redirect: 'manual'`** and follows only bounded redirects whose targets remain inside its allowlist. Redirect bodies are discarded.
+- Every upstream call has a timeout and bounded response reads. GitHub tokens, if configured, are sent upstream only and are never returned to the browser or written to logs.
+- Markdown raw HTML is skipped; links use safe protocols; code is displayed as text and never executed. The existing Content Security Policy and security headers remain in place.
+- Static files use Workers Static Assets through the `ASSETS` binding and SPA fallback. `/api` routes continue through the existing Worker; no legacy `__STATIC_CONTENT` binding is used.
 
-### Caching
+Successful public responses use short shared cache lifetimes (typically 60 seconds for collaboration data and activity, up to 5 minutes for stable repository metadata). The in-memory browser cache is also short-lived. Errors are not cached.
 
-- Successful responses are stored in `caches.default` for 5 minutes (commit history: 2 minutes), and sent with `Cache-Control: public, max-age=...`.
-- Only successful responses are cached.
-- The browser keeps responses for 60 seconds (explorer) or 5 minutes (repository list) and de-duplicates in-flight requests.
+## Branding
 
-## Security
+Official AnkWorks organization branding is sourced from the GitHub organization avatar and stored locally in `public/branding/` so critical site branding does not depend on the GitHub avatar CDN at runtime. The optimized logo is used in the header, dashboard, About page, favicon, and social preview.
 
-- **Read-only**: GET only. No authentication, no write operations, no private repositories.
-- **Scope**: only repositories of `ankworks` that are public. Repository names, refs, and paths are validated before any upstream call. Path traversal (`..`, `.`, empty segments, backslashes, control characters) is rejected. Pagination links are followed only when they point to this organization's repository list.
-- **Upstream**: fixed origin (`https://api.github.com`), `redirect: 'error'`, 8-second timeout, bounded response sizes. No arbitrary URL proxying.
-- **Content**: text is rendered as text. Markdown is rendered with `react-markdown` without raw HTML. Link destinations are restricted to `http(s)`, `mailto`, and internal routes; `javascript:`, `data:`, and other schemes are dropped. README images only load from the allowlisted hosts in `src/shared/markdown-links.ts` (`IMAGE_HOSTS`). Repository code is never executed.
-- **Headers**: `public/_headers` sets a strict Content-Security-Policy (`script-src 'self'`, no third-party styles or fonts, `img-src` synchronized with `IMAGE_HOSTS` by a test), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, and HSTS. API responses set their own restrictive headers. Raw downloads are served as `application/octet-stream` with `Content-Disposition: attachment` and a sandboxed CSP.
-- **Secrets**: `GITHUB_TOKEN` is an optional Worker secret used only for upstream requests. It is never returned to clients.
+- `public/branding/ankworks-logo.png` — optimized official avatar
+- `public/branding/ankworks-logo.webp` — optimized UI variant
+- `public/branding/og-preview.png` — 1200×630 Open Graph/Twitter preview
+- `public/favicon.ico`, `public/favicon-32x32.png`, `public/apple-touch-icon.png`, `public/favicon.svg` — browser icons
 
 ## Architecture
 
 ```
 src/
-  App.tsx              route table (code-split pages)
-  main.tsx             React entry point
-  pages/               route-level pages
-  components/          layout and explorer UI (src/components/explorer)
-  api/                 browser clients for /api (cache, timeouts, error mapping)
-  shared/              validation, route builders, link/image resolution, limits (used by UI and Worker)
-  lib/                 formatting, filters, error copy, syntax highlighting helpers
-  worker/              Cloudflare Worker: router, GitHub client, caching, sanitizers, explorer endpoints
-  test/                Vitest suites (mocked upstream only)
-public/                static assets, _headers (security headers), robots.txt, sitemap.xml
+  App.tsx                    React Router table and code-split pages
+  pages/                     dashboard, repository, issue, PR, branch/tag, and About pages
+  components/                navigation, theme, collaboration, and source explorer UI
+  api/explorer.ts            same-origin browser API client and response guards
+  api/github.ts              public repository-list client
+  shared/                    validation, route builders, limits, Markdown safety
+  worker/api.ts              Worker routing, repository visibility checks, caching
+  worker/collaboration.ts    public activity, issues, pull requests, tags, sanitizers
+  worker/github-client.ts    fixed-origin, bounded GitHub REST client
+  worker/explorer.ts         tree, file, README, and raw-file handlers
+  test/                      mocked GitHub API, Worker, and route-level UI tests
+public/                      static assets, local branding, and security headers
 ```
 
-Stack: React 18, TypeScript, Vite 5, Tailwind CSS 3, React Router 7, react-markdown + remark-gfm, lowlight (highlight.js grammars), Cloudflare Workers with Static Assets (Wrangler 4).
+Stack: React 18, TypeScript, Vite 5, Tailwind CSS 3, React Router 7, react-markdown + remark-gfm, lowlight, and Cloudflare Workers with Static Assets (Wrangler 4).
 
-## Development
+## Development and verification
 
-Requirements: Node.js 20+ and npm.
+Requirements: Node.js 22+ and npm.
 
 ```bash
-npm ci                 # install from the lockfile
-npm run dev            # Vite dev server on http://localhost:3000
-npm run worker:dev     # build, then run the Worker locally with wrangler dev on :8787
+npm ci
+npm run dev
+npm run worker:dev
 ```
 
-The Vite dev server proxies `/api` to the local Worker on port 8787, so run
-`npm run worker:dev` in a second terminal when working on data pages.
+The Vite server proxies `/api` to the local Worker on port 8787. Run the Vite server and `npm run worker:dev` in separate terminals when testing the complete app. The Worker remains named `github`; Wrangler uses `ASSETS`, the current SPA fallback, and the existing production domain.
 
-## Scripts
+```bash
+npm run typecheck
+npm run lint
+npm run test
+npm run build
+npx wrangler deploy --dry-run
+```
 
-| Command | What it does |
-| --- | --- |
-| `npm run typecheck` | TypeScript checks for the app, the Worker, and the Node tooling config |
-| `npm run lint` | ESLint with zero warnings allowed |
-| `npm run test` | Vitest suites. No test calls GitHub; upstream responses are mocked |
-| `npm run build` | Production build into `dist/` (code-split) |
-| `npx wrangler dev --port 8787` | Local Worker with static assets (after a build) |
-| `npm run deploy` | Build, then `wrangler deploy` (requires Cloudflare authentication) |
-
-## Configuration
-
-| Name | Type | Purpose |
-| --- | --- | --- |
-| `GITHUB_TOKEN` | Worker secret (optional) | Raises GitHub API rate limits. Set with `npx wrangler secret put GITHUB_TOKEN`. Never commit it. |
-
-`wrangler.jsonc` defines the Worker `github`, the `ASSETS` binding,
-`not_found_handling: "single-page-application"`, and `run_worker_first` for
-`/api` only. The custom domain is `works.ankb.qzz.io`. The Worker does not
-overwrite other Workers in the account; deploy this one with its own name.
-
-## Testing
-
-`npm run test` runs 170 tests across these areas:
-
-- Worker endpoints: listing, branch and commit pagination, tree/file/README/raw handling, LFS pointers, binary files, symlinks, submodules, oversized files, invalid repository names and paths, traversal, rate limits (429 with `Retry-After`), timeouts, upstream failures, token handling, and the `redirect: 'error'` / `api.github.com`-only guarantee.
-- Shared logic: validation, route encoding round-trips, Markdown link and image resolution, CSP and image-allowlist consistency, no third-party assets.
-- Markdown rendering: GFM output, sanitization, dangerous links, relative links and images.
-- UI routes: organization list, search, error and retry, rate-limit copy, directory navigation, branch-with-slash routing, source viewer states, commit pagination, not-found, and that the browser never calls `api.github.com`.
+Tests mock GitHub responses and do not require live credentials. They cover Worker routes and sanitization, fixed API origin/redirect handling, repository visibility, pagination, activity, tags, issues, pull requests, safe Markdown, and existing source-explorer behavior.
 
 ## Known limitations
 
-- Directory listings come from the GitHub contents API, which returns at most 1,000 entries per directory. Larger directories are shown with a warning.
-- Files above 512 KB are not rendered in the viewer. Files above 10 MB are not available through the raw endpoint; use the GitHub link.
-- Git LFS objects are not downloaded; LFS pointers are shown as pointers.
-- Submodules and symlinks are shown as metadata; they are never followed.
-- The syntax highlighter covers 26 languages; other files render as plain text.
-- Unauthenticated GitHub API limits apply unless `GITHUB_TOKEN` is set. Rate-limited requests return a retry time.
-- Live GitHub upstream behaviour was not exercised from the development sandbox (see the deployment notes in the pull request); the test suite covers it with mocks.
+- This milestone is read-only: GitHub App authentication, sessions, OAuth, comments/writes, Monaco editing, branch creation, commits, and PR creation are not implemented.
+- GitHub Search API result counts and pagination inherit GitHub's search limits and rate limits. Public event data is a recent activity feed, not a complete audit log.
+- A GitHub Wiki is opened on GitHub when enabled; wiki content is not rendered in Forge.
+- Direct GitHub links remain available for details that are not implemented in the local UI. GitHub is authoritative for permissions, branch protection, rulesets, and collaboration state.
+- The source explorer retains its existing file-size, directory-listing, binary-file, and Git LFS limits.
+- Production deployment and live production-domain verification require the authorized Cloudflare workflow; this development work does not deploy the Worker.

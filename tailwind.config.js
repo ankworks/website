@@ -7,14 +7,14 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Palette from the owner directive (dark-first developer platform).
-        background: '#0B0D10',
-        surface: '#12151A',
-        elevated: '#191D24',
-        primary: '#A3E635',
-        text: '#E6EDF3',
-        muted: '#8B949E',
-        border: '#30363D',
+        // Theme tokens let the dark-first palette switch to a high-contrast light mode.
+        background: 'rgb(var(--forge-background) / <alpha-value>)',
+        surface: 'rgb(var(--forge-surface) / <alpha-value>)',
+        elevated: 'rgb(var(--forge-elevated) / <alpha-value>)',
+        primary: 'rgb(var(--forge-primary) / <alpha-value>)',
+        text: 'rgb(var(--forge-text) / <alpha-value>)',
+        muted: 'rgb(var(--forge-muted) / <alpha-value>)',
+        border: 'rgb(var(--forge-border) / <alpha-value>)',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],

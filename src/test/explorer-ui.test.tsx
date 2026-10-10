@@ -91,6 +91,8 @@ describe('explorer UI', () => {
     return (url) => {
       const p = url.pathname;
       if (p === '/api/repos') return json({ org: 'ankworks', repos: REPOS, total_count: REPOS.length, fetched_at: '2026-01-01T00:00:00Z' });
+      if (p === '/api/activity') return json({ events: [{ id: 'event-1', kind: 'push', actor: 'ada', repo: 'website', summary: 'pushed to main', created_at: '2026-01-01T00:00:00Z', href: '/repos/website' }], fetched_at: '2026-01-01T00:00:00Z' });
+      if (p === '/api/issues' || p === '/api/pulls') return json({ items: [], total_count: 0, state: 'open', page: 1, per_page: 30, has_next: false });
       if (p === '/api/org') {
         return json({
           org: {
@@ -113,6 +115,7 @@ describe('explorer UI', () => {
             pushed_at: '2026-01-01T00:00:00Z',
             license: null,
             homepage: null,
+            has_wiki: false,
           },
         });
       }
@@ -179,6 +182,16 @@ describe('explorer UI', () => {
           has_next: false,
         });
       }
+      if (p === '/api/repos/website/tags') return json({ tags: [{ name: 'v1.0.0', sha: SHA }], page: 1, per_page: 100, has_next: false });
+      if (p === '/api/repos/website/issues') return json({ items: [], total_count: null, state: url.searchParams.get('state') ?? 'open', page: 1, per_page: 30, has_next: false });
+      if (p === '/api/repos/website/pulls') return json({ items: [], total_count: null, state: url.searchParams.get('state') ?? 'open', page: 1, per_page: 30, has_next: false });
+      if (p === '/api/repos/website/issues/7') return json({ issue: { number: 7, repo: 'website', title: 'A public issue', body: 'A **safe** description.', state: 'open', state_reason: null, author: { login: 'ada', avatar_url: null }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-02T00:00:00Z', closed_at: null, comments: 1, labels: [{ name: 'docs', color: 'a3e635', description: null }], html_url: 'https://github.com/ankworks/website/issues/7' } });
+      if (p === '/api/repos/website/issues/7/comments') return json({ comments: [{ id: 91, author: { login: 'lin', avatar_url: null }, body: 'Thanks for filing this.', created_at: '2026-01-02T00:00:00Z', updated_at: '2026-01-02T00:00:00Z' }], page: Number(url.searchParams.get('page') ?? '1'), per_page: 30, has_next: false });
+      if (p === '/api/repos/website/pulls/12') return json({ pull: { number: 12, repo: 'website', title: 'Add collaboration views', body: 'A pull request summary.', state: 'open', state_reason: null, author: { login: 'ada', avatar_url: null }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-02T00:00:00Z', closed_at: null, comments: 1, labels: [], html_url: 'https://github.com/ankworks/website/pulls/12', draft: false, merged: false, merged_at: null, base_ref: 'main', base_sha: SHA, head_ref: 'feature/ui', head_sha: FEATURE_SHA, additions: 12, deletions: 2, changed_files: 1, commits_count: 1 } });
+      if (p === '/api/repos/website/pulls/12/files') return json({ files: [{ filename: 'src/App.tsx', previous_filename: null, status: 'modified', additions: 12, deletions: 2, changes: 14, patch: '@@ -1 +1 @@' }], page: 1, per_page: 30, has_next: false });
+      if (p === '/api/repos/website/pulls/12/commits') return json({ commits: [{ sha: SHA, title: 'Add views', message: 'Add views', author_name: 'Ada', author_login: 'ada', date: '2026-01-02T00:00:00Z', html_url: `https://github.com/ankworks/website/commit/${SHA}` }], page: 1, per_page: 30, has_next: false });
+      if (p === '/api/repos/website/pulls/12/comments') return json({ comments: [], page: 1, per_page: 30, has_next: false });
+      if (p === '/api/repos/website/pulls/12/review-comments') return json({ comments: [], page: 1, per_page: 30, has_next: false });
       if (p === '/api/repos/website/commits') {
         const page = Number(url.searchParams.get('page') ?? '1');
         return json({
@@ -203,40 +216,46 @@ describe('explorer UI', () => {
     };
   }
 
-  describe('organization overview', () => {
-    it('lists public repositories with their metadata', async () => {
+  describe('organization dashboard and repository index', () => {
+    it('shows the organization logo, real repository totals, and public activity', async () => {
       renderAt('/');
       expect(await screen.findByRole('heading', { name: 'AnkWorks' })).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: 'AnkWorks organization logo' }).getAttribute('src')).toBe('/branding/ankworks-logo.webp');
+      expect(await screen.findByText('Stars across public repositories')).toBeInTheDocument();
+      expect(await screen.findByRole('list', { name: 'Recent organization activity' })).toHaveTextContent('pushed to main');
+    });
+
+    it('lists public repositories with their metadata', async () => {
+      renderAt('/repos');
       const list = await screen.findByRole('list', { name: 'Repositories' });
       const items = within(list).getAllByRole('listitem');
       expect(items).toHaveLength(2);
-      // Default sort is stars, descending: aurelia (99) before website (10).
       expect(items[0]).toHaveTextContent('aurelia');
       expect(items[1]).toHaveTextContent('website');
       expect(items[0]).toHaveTextContent('JavaScript');
     });
 
     it('filters repositories by search text and shows an empty state when nothing matches', async () => {
-      renderAt('/');
+      renderAt('/repos');
       await screen.findByRole('list', { name: 'Repositories' });
       fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'zzz-nothing' } });
       expect(await screen.findByText('No repositories match these filters.')).toBeInTheDocument();
     });
 
-    it('focuses the search box with the "/" key', async () => {
-      renderAt('/');
+    it('focuses the repository search box with the "/" key', async () => {
+      renderAt('/repos');
       const search = await screen.findByRole('searchbox');
       expect(search).not.toHaveFocus();
       fireEvent.keyDown(window, { key: '/' });
       expect(search).toHaveFocus();
     });
 
-    it('shows an error with a working retry when the API fails', async () => {
+    it('shows an error with a working retry when the repository API fails', async () => {
       const user = userEvent.setup();
       let fail = true;
       const base = defaultApi();
       api = (url) => (fail && url.pathname === '/api/repos' ? errorJson(502, 'GITHUB_UPSTREAM_ERROR', 'GitHub API is currently unavailable.') : base(url));
-      renderAt('/');
+      renderAt('/repos');
       expect(await screen.findByText(/GitHub API is currently unavailable|unavailable/i)).toBeInTheDocument();
       fail = false;
       await user.click(screen.getByRole('button', { name: /try again|retry/i }));
@@ -249,7 +268,7 @@ describe('explorer UI', () => {
         url.pathname === '/api/repos'
           ? errorJson(429, 'GITHUB_RATE_LIMITED', 'GitHub API rate limit reached.', { 'Retry-After': '120' })
           : base(url);
-      renderAt('/');
+      renderAt('/repos');
       expect(await screen.findByText('GitHub rate limit reached')).toBeInTheDocument();
       expect(screen.getByText(/about 120 seconds/)).toBeInTheDocument();
     });
@@ -372,10 +391,47 @@ describe('explorer UI', () => {
     });
   });
 
+  describe('read-only collaboration pages', () => {
+    it('renders the organization-wide Issues and Pull Requests routes', async () => {
+      const issuesView = renderAt('/issues');
+      expect(await screen.findByRole('heading', { name: 'Issues', level: 1 })).toBeInTheDocument();
+      expect(await screen.findByText('No open issues.')).toBeInTheDocument();
+      issuesView.unmount();
+
+      renderAt('/pulls');
+      expect(await screen.findByRole('heading', { name: 'Pull Requests', level: 1 })).toBeInTheDocument();
+      expect(await screen.findByText('No open pull requests.')).toBeInTheDocument();
+    });
+
+    it('renders a read-only issue description, labels, and comments', async () => {
+      renderAt('/repos/website/issues/7');
+      expect(await screen.findByRole('heading', { name: 'A public issue' })).toBeInTheDocument();
+      expect(screen.getByText('safe')).toBeInTheDocument();
+      expect(await screen.findByRole('article', { name: 'Rendered Issue comment' })).toBeInTheDocument();
+      expect(screen.getByText('docs')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /Back to issues/ })).toHaveAttribute('href', '/repos/website/issues');
+    });
+
+    it('shows pull request status, changed files, commit history, and comments without mutation controls', async () => {
+      renderAt('/repos/website/pulls/12');
+      expect(await screen.findByRole('heading', { name: 'Add collaboration views' })).toBeInTheDocument();
+      expect(await screen.findByText('src/App.tsx')).toBeInTheDocument();
+      expect(await screen.findByText('Add views')).toBeInTheDocument();
+      expect(await screen.findByText('Posting comments, submitting reviews, and merge actions are disabled in this milestone.')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /merge/i })).toBeNull();
+    });
+
+    it('lists branches and tags from the repository tab', async () => {
+      renderAt('/repos/website/branches?view=tags');
+      expect(await screen.findByRole('region', { name: 'Tags' })).toHaveTextContent('v1.0.0');
+      expect(screen.getAllByRole('link', { name: /Branches/ }).some((link) => link.getAttribute('href') === '/repos/website/branches')).toBe(true);
+    });
+  });
+
   describe('about and routing', () => {
     it('renders the about page with organization facts', async () => {
       renderAt('/about');
-      expect(await screen.findByRole('heading', { name: 'About AnkWorks' })).toBeInTheDocument();
+      expect(await screen.findByRole('heading', { name: 'AnkWorks Forge' })).toBeInTheDocument();
       expect(await screen.findByText('Vietnam')).toBeInTheDocument();
       expect(screen.getAllByText(/Read-only/).length).toBeGreaterThan(0);
     });
@@ -385,9 +441,9 @@ describe('explorer UI', () => {
       expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
     });
 
-    it('redirects the old /projects address to the overview', async () => {
+    it('keeps the old /projects address working by opening the repository index', async () => {
       renderAt('/projects');
-      expect(await screen.findByRole('heading', { name: 'AnkWorks' })).toBeInTheDocument();
+      expect(await screen.findByRole('heading', { name: 'Repositories' })).toBeInTheDocument();
     });
   });
 

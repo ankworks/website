@@ -169,6 +169,7 @@ export interface RepositoryDetail extends Repository {
   pushed_at: string;
   license: string | null;
   homepage: string | null;
+  has_wiki: boolean;
 }
 
 export interface RepositoryDetailResponse {

@@ -57,6 +57,44 @@ export function commitsPath(repo: string, ref: string, page = 1): string {
   return page <= 1 ? base : `${base}?page=${page}`;
 }
 
+export function issueListPath(repo?: string, state = 'open', page = 1): string {
+  const base = repo ? `${repoPath(repo)}/issues` : '/issues';
+  return appendListQuery(base, state, page);
+}
+
+export function issuePath(repo: string, number: number): string {
+  return `${repoPath(repo)}/issues/${number}`;
+}
+
+export function pullRequestListPath(repo?: string, state = 'open', page = 1): string {
+  const base = repo ? `${repoPath(repo)}/pulls` : '/pulls';
+  return appendListQuery(base, state, page);
+}
+
+export function pullRequestPath(repo: string, number: number): string {
+  return `${repoPath(repo)}/pulls/${number}`;
+}
+
+export function branchesPath(repo: string, page = 1): string {
+  return page <= 1 ? `${repoPath(repo)}/branches` : `${repoPath(repo)}/branches?page=${page}`;
+}
+
+export function refsPath(repo: string, view: 'branches' | 'tags', page = 1): string {
+  const params = new URLSearchParams();
+  if (view === 'tags') params.set('view', 'tags');
+  if (page > 1) params.set('page', String(page));
+  const query = params.toString();
+  return query ? `${repoPath(repo)}/branches?${query}` : `${repoPath(repo)}/branches`;
+}
+
+function appendListQuery(base: string, state: string, page: number): string {
+  const params = new URLSearchParams();
+  if (state !== 'open') params.set('state', state);
+  if (page > 1) params.set('page', String(page));
+  const query = params.toString();
+  return query ? `${base}?${query}` : base;
+}
+
 /** Parent directory of a repository-relative path ("a/b/c.ts" → "a/b", "c.ts" → ""). */
 export function parentPath(path: string): string {
   const index = path.lastIndexOf('/');

@@ -15,6 +15,19 @@ import type {
   RepositoryDetailResponse,
   TreeResponse,
 } from '../types';
+import type {
+  ActivityResponse,
+  CollaborationState,
+  IssueCommentsResponse,
+  IssueListResponse,
+  IssueSummary,
+  PullRequestCommitsResponse,
+  PullRequestDetail,
+  PullRequestFilesResponse,
+  PullRequestListResponse,
+  PullRequestReviewCommentsResponse,
+  TagsResponse,
+} from '../types/collaboration';
 
 const API_BASE = '/api';
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -129,6 +142,36 @@ const isReadmeResponse: Guard<ReadmeResponse> = (v): v is ReadmeResponse =>
 const isCommitsResponse: Guard<CommitsResponse> = (v): v is CommitsResponse =>
   isRecord(v) && Array.isArray(v.commits) && typeof v.has_next === 'boolean';
 
+const isTagsResponse: Guard<TagsResponse> = (v): v is TagsResponse =>
+  isRecord(v) && Array.isArray(v.tags) && typeof v.has_next === 'boolean';
+
+const isActivityResponse: Guard<ActivityResponse> = (v): v is ActivityResponse =>
+  isRecord(v) && Array.isArray(v.events);
+
+const isIssueListResponse: Guard<IssueListResponse> = (v): v is IssueListResponse =>
+  isRecord(v) && Array.isArray(v.items) && typeof v.has_next === 'boolean' && typeof v.page === 'number';
+
+const isIssueCommentsResponse: Guard<IssueCommentsResponse> = (v): v is IssueCommentsResponse =>
+  isRecord(v) && Array.isArray(v.comments) && typeof v.has_next === 'boolean';
+
+const isPullRequestListResponse: Guard<PullRequestListResponse> = (v): v is PullRequestListResponse =>
+  isRecord(v) && Array.isArray(v.items) && typeof v.has_next === 'boolean' && typeof v.page === 'number';
+
+const isPullRequestFilesResponse: Guard<PullRequestFilesResponse> = (v): v is PullRequestFilesResponse =>
+  isRecord(v) && Array.isArray(v.files) && typeof v.has_next === 'boolean';
+
+const isPullRequestCommitsResponse: Guard<PullRequestCommitsResponse> = (v): v is PullRequestCommitsResponse =>
+  isRecord(v) && Array.isArray(v.commits) && typeof v.has_next === 'boolean';
+
+const isPullRequestReviewCommentsResponse: Guard<PullRequestReviewCommentsResponse> = (v): v is PullRequestReviewCommentsResponse =>
+  isRecord(v) && Array.isArray(v.comments) && typeof v.has_next === 'boolean';
+
+const isIssueDetailResponse: Guard<{ issue: IssueSummary }> = (v): v is { issue: IssueSummary } =>
+  isRecord(v) && isRecord(v.issue) && typeof v.issue.number === 'number';
+
+const isPullRequestDetailResponse: Guard<{ pull: PullRequestDetail }> = (v): v is { pull: PullRequestDetail } =>
+  isRecord(v) && isRecord(v.pull) && typeof v.pull.number === 'number';
+
 export const explorerApi = {
   organization: () => getJson(buildUrl('/org'), isOrganizationResponse),
 
@@ -137,6 +180,38 @@ export const explorerApi = {
 
   branches: (repo: string, page: number) =>
     getJson(buildUrl(`/repos/${encodeURIComponent(repo)}/branches`, { page, per_page: 100 }), isBranchesResponse),
+
+  tags: (repo: string, page: number) =>
+    getJson(buildUrl(`/repos/${encodeURIComponent(repo)}/tags`, { page, per_page: 100 }), isTagsResponse),
+
+  activity: (limit = 10) => getJson(buildUrl('/activity', { limit }), isActivityResponse),
+
+  issues: (repo: string | null, state: CollaborationState, page: number) =>
+    getJson(buildUrl(repo ? `/repos/${encodeURIComponent(repo)}/issues` : '/issues', { state, page, per_page: 30 }), isIssueListResponse),
+
+  issue: (repo: string, number: number) =>
+    getJson(buildUrl(`/repos/${encodeURIComponent(repo)}/issues/${number}`), isIssueDetailResponse),
+
+  issueComments: (repo: string, number: number, page: number) =>
+    getJson(buildUrl(`/repos/${encodeURIComponent(repo)}/issues/${number}/comments`, { page, per_page: 30 }), isIssueCommentsResponse),
+
+  pullRequests: (repo: string | null, state: CollaborationState, page: number) =>
+    getJson(buildUrl(repo ? `/repos/${encodeURIComponent(repo)}/pulls` : '/pulls', { state, page, per_page: 30 }), isPullRequestListResponse),
+
+  pullRequest: (repo: string, number: number) =>
+    getJson(buildUrl(`/repos/${encodeURIComponent(repo)}/pulls/${number}`), isPullRequestDetailResponse),
+
+  pullRequestFiles: (repo: string, number: number, page: number) =>
+    getJson(buildUrl(`/repos/${encodeURIComponent(repo)}/pulls/${number}/files`, { page, per_page: 30 }), isPullRequestFilesResponse),
+
+  pullRequestCommits: (repo: string, number: number, page: number) =>
+    getJson(buildUrl(`/repos/${encodeURIComponent(repo)}/pulls/${number}/commits`, { page, per_page: 30 }), isPullRequestCommitsResponse),
+
+  pullRequestComments: (repo: string, number: number, page: number) =>
+    getJson(buildUrl(`/repos/${encodeURIComponent(repo)}/pulls/${number}/comments`, { page, per_page: 30 }), isIssueCommentsResponse),
+
+  pullRequestReviewComments: (repo: string, number: number, page: number) =>
+    getJson(buildUrl(`/repos/${encodeURIComponent(repo)}/pulls/${number}/review-comments`, { page, per_page: 30 }), isPullRequestReviewCommentsResponse),
 
   tree: (repo: string, ref: string, path: string) =>
     getJson(buildUrl(`/repos/${encodeURIComponent(repo)}/tree`, { ref, path }), isTreeResponse),

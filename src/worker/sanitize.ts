@@ -11,6 +11,7 @@ import type {
   OrganizationInfo,
   RepositoryDetail,
 } from '../types';
+import type { TagInfo } from '../types/collaboration';
 import { sanitizeRepository } from '../shared/repository';
 import { ORG_NAME, encodePathSegments, isCommitSha, isValidRef, isValidRepoName } from '../shared/validation';
 
@@ -81,6 +82,7 @@ export function sanitizeRepositoryDetail(input: unknown, requestedName: string):
     pushed_at: asIsoDate(raw.pushed_at),
     license: licenseName && licenseName !== 'NOASSERTION' ? licenseName : null,
     homepage: asHttpsUrl(raw.homepage) ?? null,
+    has_wiki: raw.has_wiki === true,
   };
 }
 
@@ -96,7 +98,8 @@ export function sanitizeOrganization(input: unknown): OrganizationInfo | null {
     login: ORG_NAME,
     name: asString(raw.name, 255),
     description: asString(raw.description, 1000) || null,
-    avatar_url: asHttpsUrl(raw.avatar_url, ['avatars.githubusercontent.com']) ?? '',
+    // Critical AnkWorks branding is served from this site's own static assets.
+    avatar_url: '/branding/ankworks-logo.png',
     html_url: `https://github.com/${ORG_NAME}`,
     blog,
     location: asString(raw.location, 255) || null,
@@ -113,6 +116,16 @@ export function sanitizeBranch(input: unknown): BranchInfo | null {
   const sha = commit ? asString(commit.sha, 40) : null;
   if (!name || !isValidRef(name) || !sha || !isCommitSha(sha)) return null;
   return { name, sha, protected: raw.protected === true };
+}
+
+export function sanitizeTag(input: unknown): TagInfo | null {
+  const raw = asRecord(input);
+  if (!raw) return null;
+  const name = asString(raw.name, 255);
+  const commit = asRecord(raw.commit);
+  const sha = commit ? asString(commit.sha, 40) : null;
+  if (!name || !isValidRef(name) || !sha || !isCommitSha(sha)) return null;
+  return { name, sha };
 }
 
 /** Commit summary. `repo` is used to build the GitHub link. */

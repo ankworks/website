@@ -4,80 +4,56 @@ import Layout from './components/Layout';
 import { Skeleton } from './components/explorer/ui';
 import OrganizationPage from './pages/OrganizationPage';
 
-// Explorer routes are code-split: each page loads only when it is first visited.
+const ExplorePage = lazy(() => import('./pages/ExplorePage'));
+const RepositoriesPage = lazy(() => import('./pages/RepositoriesPage'));
 const RepositoryPage = lazy(() => import('./pages/RepositoryPage'));
 const TreePage = lazy(() => import('./pages/TreePage'));
 const BlobPage = lazy(() => import('./pages/BlobPage'));
 const CommitsPage = lazy(() => import('./pages/CommitsPage'));
+const BranchesPage = lazy(() => import('./pages/BranchesPage'));
+const IssuesPage = lazy(() => import('./pages/IssuesPage'));
+const IssueDetailPage = lazy(() => import('./pages/IssueDetailPage'));
+const PullRequestsPage = lazy(() => import('./pages/PullRequestsPage'));
+const PullRequestDetailPage = lazy(() => import('./pages/PullRequestDetailPage'));
 const AboutPage = lazy(() => import('./pages/AboutPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 function PageFallback() {
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6" aria-busy="true">
+    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6" aria-busy="true">
       <Skeleton className="h-8 w-72" />
       <Skeleton className="mt-6 h-72 w-full" />
     </div>
   );
 }
 
-/** Route table for the whole site. Used by main.tsx and by the route tests. */
+function LazyPage({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={<PageFallback />}>{children}</Suspense>;
+}
+
+/** Route table for the whole site. Used by main.tsx and by route tests. */
 export default function App() {
   return (
     <Routes>
-            <Route path="/" element={<Layout />}>
-              <Route index element={<OrganizationPage />} />
-              <Route
-                path="repos/:repo"
-                element={
-                  <Suspense fallback={<PageFallback />}>
-                    <RepositoryPage />
-                  </Suspense>
-                }
-              />
-              <Route
-                path="repos/:repo/tree/:ref/*"
-                element={
-                  <Suspense fallback={<PageFallback />}>
-                    <TreePage />
-                  </Suspense>
-                }
-              />
-              <Route
-                path="repos/:repo/blob/:ref/*"
-                element={
-                  <Suspense fallback={<PageFallback />}>
-                    <BlobPage />
-                  </Suspense>
-                }
-              />
-              <Route
-                path="repos/:repo/commits/:ref"
-                element={
-                  <Suspense fallback={<PageFallback />}>
-                    <CommitsPage />
-                  </Suspense>
-                }
-              />
-              <Route
-                path="about"
-                element={
-                  <Suspense fallback={<PageFallback />}>
-                    <AboutPage />
-                  </Suspense>
-                }
-              />
-              {/* Former landing-page URL: keep old links working. */}
-              <Route path="projects" element={<Navigate to="/" replace />} />
-              <Route
-                path="*"
-                element={
-                  <Suspense fallback={<PageFallback />}>
-                    <NotFoundPage />
-                  </Suspense>
-                }
-              />
-            </Route>
-          </Routes>
+      <Route path="/" element={<Layout />}>
+        <Route index element={<OrganizationPage />} />
+        <Route path="explore" element={<LazyPage><ExplorePage /></LazyPage>} />
+        <Route path="repos" element={<LazyPage><RepositoriesPage /></LazyPage>} />
+        <Route path="repos/:repo" element={<LazyPage><RepositoryPage /></LazyPage>} />
+        <Route path="repos/:repo/issues" element={<LazyPage><IssuesPage /></LazyPage>} />
+        <Route path="repos/:repo/issues/:number" element={<LazyPage><IssueDetailPage /></LazyPage>} />
+        <Route path="repos/:repo/pulls" element={<LazyPage><PullRequestsPage /></LazyPage>} />
+        <Route path="repos/:repo/pulls/:number" element={<LazyPage><PullRequestDetailPage /></LazyPage>} />
+        <Route path="repos/:repo/branches" element={<LazyPage><BranchesPage /></LazyPage>} />
+        <Route path="repos/:repo/tree/:ref/*" element={<LazyPage><TreePage /></LazyPage>} />
+        <Route path="repos/:repo/blob/:ref/*" element={<LazyPage><BlobPage /></LazyPage>} />
+        <Route path="repos/:repo/commits/:ref" element={<LazyPage><CommitsPage /></LazyPage>} />
+        <Route path="issues" element={<LazyPage><IssuesPage /></LazyPage>} />
+        <Route path="pulls" element={<LazyPage><PullRequestsPage /></LazyPage>} />
+        <Route path="about" element={<LazyPage><AboutPage /></LazyPage>} />
+        <Route path="projects" element={<Navigate to="/repos" replace />} />
+        <Route path="*" element={<LazyPage><NotFoundPage /></LazyPage>} />
+      </Route>
+    </Routes>
   );
 }
