@@ -11,7 +11,7 @@
     "lint:fix": "eslint . --ext ts,tsx,js,jsx,json,jsonc --fix",
     "test": "vitest",
     "test:coverage": "vitest --coverage",
-    "deploy": "npm run build && wrangler pages deploy --project-name ankworks-website .vite/deploy --commit-message \"Deploy to production\" || echo 'Cloudflare deployment requires CLOUDFLARE_API_TOKEN'", 
+    "deploy": "wrangler pages deploy .vite/deploy --project-name ankworks-website --commit-message \"Deploy to production\"", 
     "preview": "vite preview",
     "worker:dev": "wrangler dev",
     "worker:deploy": "wrangler deploy"
