@@ -17,6 +17,10 @@ export function describeError(error: unknown): ErrorDescription {
     switch (code) {
       case 'REPO_NOT_FOUND':
         return { title: 'Repository not found', message: 'This repository does not exist or is not public.', retryable: false };
+      case 'ISSUE_NOT_FOUND':
+        return { title: 'Issue not found', message: 'This issue does not exist or is not public.', retryable: false };
+      case 'PULL_REQUEST_NOT_FOUND':
+        return { title: 'Pull request not found', message: 'This pull request does not exist or is not public.', retryable: false };
       case 'REF_NOT_FOUND':
         return { title: 'Branch or commit not found', message: 'The requested branch, tag, or commit does not exist in this repository.', retryable: false };
       case 'PATH_NOT_FOUND':

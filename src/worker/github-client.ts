@@ -3,7 +3,7 @@
  *
  * Security properties:
  * - Only https://api.github.com with paths under /orgs/ankworks or /repos/ankworks/
- *   can be requested. Arbitrary URLs never reach fetch().
+ *   plus the fixed /search/issues endpoint can be requested. Arbitrary URLs never reach fetch().
  * - Every request has a timeout; every body read has a byte limit.
  * - Redirects use "manual" mode: workerd's fetch only implements "follow" and
  *   "manual" (redirect: "error" throws a TypeError before the request is sent),
@@ -84,7 +84,8 @@ export function buildGitHubUrl(path: string, query?: Record<string, QueryValue>)
   const allowed =
     url.pathname === `/orgs/${ORG_NAME}` ||
     url.pathname.startsWith(`/orgs/${ORG_NAME}/`) ||
-    url.pathname.startsWith(`/repos/${ORG_NAME}/`);
+    url.pathname.startsWith(`/repos/${ORG_NAME}/`) ||
+    url.pathname === '/search/issues';
   if (url.origin !== GITHUB_API_ORIGIN || !allowed) {
     throw new UpstreamError(500, 'INTERNAL_ERROR', 'An unexpected error occurred.');
   }
@@ -193,7 +194,8 @@ export function validateGitHubRedirect(location: string | null, fromUrl: string)
   const allowed =
     url.pathname === `/orgs/${ORG_NAME}` ||
     url.pathname.startsWith(`/orgs/${ORG_NAME}/`) ||
-    url.pathname.startsWith(`/repos/${ORG_NAME}/`);
+    url.pathname.startsWith(`/repos/${ORG_NAME}/`) ||
+    url.pathname === '/search/issues';
   return allowed ? url.toString() : null;
 }
 

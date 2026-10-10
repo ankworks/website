@@ -13,6 +13,16 @@ import {
 
 const ORG_REPOS = 'https://api.github.com/orgs/ankworks/repos';
 
+describe('buildGitHubUrl', () => {
+  it('allows only the scoped issue search endpoint in addition to organization and repository paths', () => {
+    expect(buildGitHubUrl('/search/issues', { q: 'org:ankworks is:issue state:open' })).toBe(
+      'https://api.github.com/search/issues?q=org%3Aankworks+is%3Aissue+state%3Aopen'
+    );
+    expect(() => buildGitHubUrl('/search/code', { q: 'secret' })).toThrowError(UpstreamError);
+    expect(() => buildGitHubUrl('https://example.test/anything')).toThrowError(UpstreamError);
+  });
+});
+
 describe('validateGitHubRedirect', () => {
   it('accepts absolute allowlisted targets', () => {
     const next = 'https://api.github.com/orgs/ankworks/repos?type=public&per_page=100&page=1';
@@ -29,6 +39,12 @@ describe('validateGitHubRedirect', () => {
     expect(validateGitHubRedirect('https://api.github.com/repos/ankworks/website/contents', ORG_REPOS)).toBe(
       'https://api.github.com/repos/ankworks/website/contents'
     );
+  });
+
+  it('accepts the fixed issue search endpoint without allowing arbitrary search APIs', () => {
+    const search = 'https://api.github.com/search/issues?q=org%3Aankworks+is%3Aissue';
+    expect(validateGitHubRedirect(search, ORG_REPOS)).toBe(search);
+    expect(validateGitHubRedirect('https://api.github.com/search/code?q=secret', ORG_REPOS)).toBeNull();
   });
 
   it('rejects targets on a different origin', () => {

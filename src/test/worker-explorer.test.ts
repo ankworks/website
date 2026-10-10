@@ -74,7 +74,12 @@ describe('explorer endpoints (mocked upstream)', () => {
     fetchMock = vi.fn<[input: RequestInfo | URL, init?: RequestInit], Promise<Response>>(async (input, init) => handler(new URL(String(input)), init));
     vi.stubGlobal('fetch', fetchMock);
     // No caching in these tests: each request must reach the mock.
-    vi.stubGlobal('caches', { default: { match: vi.fn().mockResolvedValue(undefined), put: vi.fn().mockResolvedValue(undefined) } });
+    vi.stubGlobal('caches', {
+      default: {
+        match: vi.fn().mockResolvedValue(undefined),
+        put: vi.fn(async (_key: Request, response: Response) => { await response.arrayBuffer(); }),
+      },
+    });
   });
 
   afterEach(() => {
@@ -97,6 +102,30 @@ describe('explorer endpoints (mocked upstream)', () => {
 
   function use(...routes: Array<(url: URL) => Response | null>): void {
     handler = (url) => {
+      if (url.pathname === '/repos/ankworks/website') {
+        return json({
+          id: 1,
+          name: 'website',
+          full_name: 'ankworks/website',
+          private: false,
+          html_url: 'https://github.com/ankworks/website',
+          owner: { login: 'ankworks' },
+          description: 'Test repository',
+          language: 'TypeScript',
+          stargazers_count: 1,
+          forks_count: 0,
+          updated_at: '2026-01-01T00:00:00Z',
+          pushed_at: '2026-01-01T00:00:00Z',
+          created_at: '2025-01-01T00:00:00Z',
+          archived: false,
+          fork: false,
+          size: 1,
+          open_issues_count: 0,
+          topics: [],
+          default_branch: 'main',
+          has_wiki: false,
+        });
+      }
       for (const route of routes) {
         const response = route(url);
         if (response) return response;

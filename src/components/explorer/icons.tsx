@@ -143,3 +143,57 @@ export const AlertIcon = (props: IconProps) => (
     <path d="M8 6.5v3M8 11.5v.01" />
   </Svg>
 );
+
+export const IssueIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <circle cx="8" cy="8" r="6.25" />
+    <path d="M8 5v3M8 11v.01" />
+  </Svg>
+);
+
+export const PullRequestIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <circle cx="4.25" cy="3.5" r="1.75" />
+    <circle cx="4.25" cy="12.5" r="1.75" />
+    <circle cx="11.75" cy="12.5" r="1.75" />
+    <path d="M4.25 5.25v5.5M11.75 10.75V7a3.5 3.5 0 0 0-3.5-3.5H6.25M8.25 1.75l-2 1.75 2 1.75" />
+  </Svg>
+);
+
+export const TagIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M2 2.5h5.25l6.5 6.5-5.25 5.25L2 7.75V2.5Z" />
+    <circle cx="5.25" cy="5.25" r=".8" fill="currentColor" stroke="none" />
+  </Svg>
+);
+
+export const ActivityIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M1.5 8h3l1.6-4.25L9 12.5l2-5 1.2 1.5h2.3" />
+  </Svg>
+);
+
+export const SunIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <circle cx="8" cy="8" r="3" />
+    <path d="M8 1.5v1.25M8 13.25v1.25M1.5 8h1.25M13.25 8h1.25M3.4 3.4l.9.9M11.7 11.7l.9.9M12.6 3.4l-.9.9M4.3 11.7l-.9.9" />
+  </Svg>
+);
+
+export const MoonIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M13.75 9.75A5.75 5.75 0 0 1 6.25 2.25 6.25 6.25 0 1 0 13.75 9.75Z" />
+  </Svg>
+);
+
+export const MenuIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M2 4h12M2 8h12M2 12h12" />
+  </Svg>
+);
+
+export const CommentIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M2 3.5h12v8H7l-3.5 2v-2H2v-8Z" />
+  </Svg>
+);
