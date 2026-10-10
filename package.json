@@ -11,7 +11,7 @@
     "lint:fix": "eslint . --ext ts,tsx,js,jsx,json,jsonc --fix",
     "test": "vitest",
     "test:coverage": "vitest --coverage",
-    "deploy": "wrangler pages deploy .vite/deploy --project-name ankworks-website --commit-message \"Deploy to production\"", 
+    "deploy": "echo 'Cloudflare Pages auto-deploys from GitHub. Use Cloudflare Dashboard to configure.'", 
     "preview": "vite preview",
     "worker:dev": "wrangler dev",
     "worker:deploy": "wrangler deploy"
