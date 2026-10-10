@@ -8,6 +8,9 @@
   "observability": {
     "enabled": true
   },
+  // Enables Worker Previews (`npx wrangler preview`), required by Workers Builds for pull requests.
+  // Empty block: no preview-specific overrides; the top-level configuration applies.
+  "previews": {},
   // Production custom domain. Requires the ankb.qzz.io zone in the same Cloudflare account.
   "routes": [
     {

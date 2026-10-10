@@ -24,6 +24,7 @@ describe('GitHub API Utilities', () => {
         fork: false,
         size: 1000,
         open_issues_count: 2,
+        default_branch: 'main',
         topics: ['test', 'example'],
       };
 
@@ -58,6 +59,7 @@ describe('GitHub API Utilities', () => {
         fork: false,
         size: 0,
         open_issues_count: 0,
+        default_branch: 'main',
         topics: [],
       };
 
@@ -152,6 +154,7 @@ describe('Repository Sorting and Filtering', () => {
       fork: false,
       size: 1000,
       open_issues_count: 5,
+      default_branch: 'main',
       topics: ['typescript'],
     },
     {
@@ -169,6 +172,7 @@ describe('Repository Sorting and Filtering', () => {
       fork: false,
       size: 500,
       open_issues_count: 2,
+      default_branch: 'main',
       topics: ['javascript'],
     },
     {
@@ -186,6 +190,7 @@ describe('Repository Sorting and Filtering', () => {
       fork: false,
       size: 2000,
       open_issues_count: 10,
+      default_branch: 'main',
       topics: ['typescript', 'archived'],
     },
     {
@@ -203,6 +208,7 @@ describe('Repository Sorting and Filtering', () => {
       fork: true,
       size: 200,
       open_issues_count: 0,
+      default_branch: 'main',
       topics: ['python', 'fork'],
     },
   ];
@@ -330,6 +336,7 @@ describe('Statistics Calculation', () => {
       fork: false,
       size: 1000,
       open_issues_count: 5,
+      default_branch: 'main',
       topics: ['typescript'],
     },
     {
@@ -347,6 +354,7 @@ describe('Statistics Calculation', () => {
       fork: false,
       size: 500,
       open_issues_count: 2,
+      default_branch: 'main',
       topics: ['javascript'],
     },
     {
@@ -364,6 +372,7 @@ describe('Statistics Calculation', () => {
       fork: false,
       size: 2000,
       open_issues_count: 10,
+      default_branch: 'main',
       topics: ['typescript'],
     },
   ];
@@ -430,6 +439,7 @@ describe('Empty States', () => {
         fork: true,
         size: 100,
         open_issues_count: 0,
+        default_branch: 'main',
         topics: [],
       },
     ];
@@ -455,6 +465,7 @@ describe('Empty States', () => {
         fork: false,
         size: 100,
         open_issues_count: 0,
+        default_branch: 'main',
         topics: [],
       },
     ];

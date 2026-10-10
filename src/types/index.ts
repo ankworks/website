@@ -110,6 +110,8 @@ export interface Repository {
   size: number;
   open_issues_count: number;
   topics: string[];
+  /** Default branch name (validated ref), or "" when unknown. */
+  default_branch: string;
 }
 
 // API Response Types
@@ -156,4 +158,126 @@ export interface NavItem {
   label: string;
   path: string;
   external?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Repository explorer (read-only). All upstream data is sanitized by the Worker.
+// ---------------------------------------------------------------------------
+
+/** Repository metadata from GET /api/repos/:repo. */
+export interface RepositoryDetail extends Repository {
+  pushed_at: string;
+  license: string | null;
+  homepage: string | null;
+}
+
+export interface RepositoryDetailResponse {
+  repo: RepositoryDetail;
+}
+
+/** Organization profile from GET /api/org. */
+export interface OrganizationInfo {
+  login: string;
+  name: string | null;
+  description: string | null;
+  avatar_url: string;
+  html_url: string;
+  blog: string | null;
+  location: string | null;
+  public_repos: number;
+  created_at: string;
+}
+
+export interface OrganizationResponse {
+  org: OrganizationInfo;
+}
+
+export interface BranchInfo {
+  name: string;
+  sha: string;
+  protected: boolean;
+}
+
+export interface BranchesResponse {
+  branches: BranchInfo[];
+  page: number;
+  per_page: number;
+  has_next: boolean;
+}
+
+export interface CommitSummary {
+  sha: string;
+  /** First line of the commit message. */
+  title: string;
+  /** Full commit message (truncated to a safe length by the Worker). */
+  message: string;
+  author_name: string;
+  author_login: string | null;
+  /** Committer date (ISO 8601). */
+  date: string;
+  html_url: string;
+}
+
+export interface CommitsResponse {
+  ref: string;
+  commits: CommitSummary[];
+  page: number;
+  per_page: number;
+  has_next: boolean;
+}
+
+export type EntryType = 'file' | 'dir' | 'symlink' | 'submodule';
+
+export interface DirectoryEntry {
+  name: string;
+  path: string;
+  type: EntryType;
+  size: number;
+  sha: string;
+  html_url: string;
+}
+
+export interface TreeResponse {
+  repo: string;
+  ref: string;
+  commit_sha: string;
+  path: string;
+  entries: DirectoryEntry[];
+  /** True when GitHub returned the maximum number of entries (listing may be incomplete). */
+  truncated: boolean;
+}
+
+export interface LastCommitResponse {
+  path: string;
+  commit: CommitSummary | null;
+}
+
+export type FileKind = 'text' | 'binary' | 'lfs-pointer' | 'too-large' | 'symlink' | 'submodule';
+
+export interface FileResponse {
+  repo: string;
+  ref: string;
+  commit_sha: string;
+  path: string;
+  name: string;
+  kind: FileKind;
+  size: number;
+  blob_sha: string;
+  html_url: string;
+  /** Decoded UTF-8 text; present only when kind === 'text'. */
+  content?: string;
+  /** Symlink target (kind === 'symlink'). Never followed. */
+  target?: string | null;
+  /** External GitHub URL of a submodule (kind === 'submodule'). */
+  submodule_url?: string | null;
+}
+
+export interface ReadmeResponse {
+  repo: string;
+  commit_sha: string;
+  path: string;
+  name: string;
+  kind: 'text' | 'binary' | 'too-large';
+  size: number;
+  content?: string;
 }

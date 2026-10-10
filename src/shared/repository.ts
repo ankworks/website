@@ -3,6 +3,7 @@
  * Keep this module free of DOM and Workers-only APIs so it compiles in both targets.
  */
 import type { Repository } from '../types';
+import { isValidRef } from './validation';
 
 const MAX_DESCRIPTION_LENGTH = 500;
 const MAX_TOPICS = 20;
@@ -45,6 +46,7 @@ export function normalizeRepository(input: unknown): Repository {
     topics: Array.isArray(repo.topics)
       ? repo.topics.filter((t): t is string => typeof t === 'string')
       : [],
+    default_branch: asDefaultBranch(repo.default_branch),
   };
 }
 
@@ -66,6 +68,11 @@ function asNonNegativeInt(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? Math.floor(value)
     : 0;
+}
+
+/** Default branch names are kept only when they are valid refs; otherwise "". */
+function asDefaultBranch(value: unknown): string {
+  return typeof value === 'string' && isValidRef(value) ? value : '';
 }
 
 function asIsoDate(value: unknown): string {
@@ -121,5 +128,6 @@ export function sanitizeRepository(input: unknown): Repository | null {
     size: asNonNegativeInt(raw.size),
     open_issues_count: asNonNegativeInt(raw.open_issues_count),
     topics,
+    default_branch: asDefaultBranch(raw.default_branch),
   };
 }
