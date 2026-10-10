@@ -1,10 +1,28 @@
 {
-  "$schema": "https://json.schemastore.org/wrangler.json",
+  // Cloudflare Workers configuration (Wrangler 4+).
+  // Docs: https://developers.cloudflare.com/workers/wrangler/configuration/
+  "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "ankworks-website",
   "main": "src/worker/index.ts",
-  "assets": {
-    "directory": ".vite/deploy"
+  "compatibility_date": "2025-09-01",
+  "observability": {
+    "enabled": true
   },
-  "compatibility_date": "2024-01-01",
-  "compatibility_flags": ["nodejs_compat"]
+  // Production custom domain. Requires the ankb.qzz.io zone in the same Cloudflare account.
+  "routes": [
+    {
+      "pattern": "works.ankb.qzz.io",
+      "custom_domain": true
+    }
+  ],
+  "assets": {
+    // Output of `vite build` (see vite.config.ts build.outDir).
+    "directory": "./dist",
+    // Worker binding used by src/worker/index.ts to serve static files.
+    "binding": "ASSETS",
+    // Unknown client-side routes (e.g. /projects) fall back to index.html.
+    "not_found_handling": "single-page-application",
+    // Only /api requests invoke the Worker; other requests are served directly from assets.
+    "run_worker_first": ["/api", "/api/*"]
+  }
 }

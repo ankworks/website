@@ -3,17 +3,5 @@ Allow: /
 
 Sitemap: https://works.ankb.qzz.io/sitemap.xml
 
-# Crawl delay
-Crawl-delay: 5
-
-# Disallow crawling of internal paths
+# Internal API endpoints are not useful for search engines.
 Disallow: /api/
-Disallow: /_next/
-Disallow: /*.js$
-Disallow: /*.css$
-Disallow: /*.map$
-
-# Allow all other paths
-Allow: /$
-Allow: /projects
-Allow: /about

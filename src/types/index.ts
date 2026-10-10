@@ -113,21 +113,16 @@ export interface Repository {
 }
 
 // API Response Types
-export interface GitHubApiResponse {
+
+/** Successful response of GET /api/repos (public repositories only). */
+export interface RepositoriesResponse {
+  org: string;
   repos: Repository[];
   total_count: number;
-  page: number;
-  per_page: number;
-  total_pages: number;
-  rate_limit: {
-    limit: number;
-    remaining: number;
-    reset: number;
-  };
-  cached: boolean;
-  cached_at: string | null;
+  fetched_at: string;
 }
 
+/** Error response returned by the Worker API. Never contains upstream secrets. */
 export interface ApiError {
   error: string;
   message: string;

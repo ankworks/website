@@ -1,3 +1,4 @@
+import type { SortBy } from '../types';
 import { useRepos } from '../hooks';
 import ProjectCard from './ProjectCard';
 import { motion } from 'framer-motion';
@@ -108,7 +109,7 @@ export default function ProjectExplorer() {
             <div>
               <h2 className="text-3xl font-bold text-text mb-2">Projects</h2>
               <p className="text-text/60">
-                Explore {totalCount} public repository{totalCount !== 1 ? 'ies' : ''} from AnkWorks
+                Explore {totalCount} public {totalCount === 1 ? 'repository' : 'repositories'} from AnkWorks
               </p>
             </div>
             
@@ -185,7 +186,7 @@ export default function ProjectExplorer() {
               <select
                 id="sort"
                 value={filters.sort_by}
-                onChange={(e) => updateSort(e.target.value as any)}
+                onChange={(e) => updateSort(e.target.value as SortBy)}
                 className="input-field w-full appearance-none bg-transparent"
               >
                 <option value="stars">Stars</option>

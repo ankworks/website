@@ -1,35 +1,22 @@
 /**
- * Cloudflare Worker with Static Assets
- * Handles API routes and serves static files
+ * Cloudflare Worker entry point.
+ *
+ * - /api/*  → GitHub-backed JSON API (this Worker).
+ * - everything else → Workers Static Assets via the ASSETS binding
+ *   (SPA fallback to index.html is handled by `assets.not_found_handling`).
  */
 
 import { handleApiRequest } from './api';
-
-// @ts-ignore - Wrangler injects __STATIC_CONTENT for assets
-const ASSETS = __STATIC_CONTENT;
+import type { Env } from './env';
 
 export default {
-  async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url);
-    const path = url.pathname;
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const { pathname } = new URL(request.url);
 
-    // API routes - handle /api/* requests
-    if (path.startsWith('/api/')) {
-      return handleApiRequest(request);
+    if (pathname === '/api' || pathname.startsWith('/api/')) {
+      return handleApiRequest(request, env, ctx);
     }
 
-    // Serve static assets
-    try {
-      // @ts-ignore
-      return await ASSETS.fetch(request);
-    } catch {
-      // Fallback to index.html for SPA routing
-      try {
-        // @ts-ignore
-        return await ASSETS.fetch(new Request(url.origin + '/index.html', request));
-      } catch {
-        return new Response('Not Found', { status: 404 });
-      }
-    }
-  }
-};
+    return env.ASSETS.fetch(request);
+  },
+} satisfies ExportedHandler<Env>;

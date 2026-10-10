@@ -29,8 +29,8 @@ export function useRepos() {
       const data = await getRepositories(forceRefresh);
       setRepos(data);
       setHasMore(data.length > PER_PAGE);
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch repositories');
+    } catch (err: unknown) {
+      setError(err instanceof Error && err.message ? err.message : 'Failed to fetch repositories');
       setRepos([]);
     } finally {
       setLoading(false);
@@ -112,7 +112,7 @@ export function useRepos() {
   // Get unique languages for filter
   const languages = useMemo(() => {
     const langSet = new Set<string>();
-    _repos.forEach((repo: any) => {
+    _repos.forEach((repo) => {
       if (repo.language) langSet.add(repo.language);
     });
     return Array.from(langSet).sort();
