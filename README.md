@@ -2,7 +2,9 @@
 
 AnkWorks Forge is a read-only development platform for the public repositories of the [`ankworks`](https://github.com/ankworks) organization, designed for the `works.ankb.qzz.io` domain. GitHub remains the source of truth. This repository is the existing AnkWorks Code Explorer, incrementally expanded rather than replaced; no production deployment is part of this change.
 
-## Milestone A
+## Milestones
+
+### Milestone A — Markdown platform
 
 - **Markdown platform**: a sanitized GitHub-flavored Markdown renderer (tables, task lists, fenced code with syntax highlighting, safe raw-HTML subset), Mermaid diagrams (lazy-loaded, strict security, CSP-safe styling), GitHub-style heading anchors with duplicate suffixes, and a table of contents beside long documents.
 - **Organization profile README**: `ankworks/.github/profile/README.md` rendered below the organization overview and featured projects, fetched live from GitHub with cache support and a graceful fallback when it is missing.
@@ -12,7 +14,34 @@ AnkWorks Forge is a read-only development platform for the public repositories o
 - **Issues** with organization-wide and repository-specific lists, open/closed/all filters, issue detail, labels, safe Markdown, comments, and pagination.
 - **Pull requests** with organization-wide and repository-specific lists, state filters, detail and lifecycle status, labels, changed files, commits, conversation comments, review comments, and pagination.
 - **Responsive navigation**, dark-first palette, light theme support, keyboard focus states, loading, empty, and error states.
-- **Read-only by design.** No sign-in flow or repository writes are enabled in this milestone. The UI does not simulate authentication.
+- **Foundation** for the Forge experience: dark-first palette, dense Forge-style layout, responsive navigation.
+
+### Milestone B — GitHub authentication and sessions
+- **OAuth sign-in** (`/api/auth/login` → GitHub → `/api/auth/callback`) with CSRF `state` binding and a fail-closed callback.
+- **Encrypted sessions**: the GitHub access token lives only inside an AES-256-GCM sealed `HttpOnly; Secure; SameSite=Lax` cookie — never in JS, URLs, or JSON. Tampered, expired, or foreign-key cookies are rejected.
+- **Permission detection** (`GET /api/auth/permissions`) mapping repository roles (admin/maintain/write/triage/read) with the user's own token; account menu with sign-in/sign-out; guest mode when secrets are missing.
+
+### Milestone C — Commits, branches, diff viewer
+- **Authenticated writes**: `POST /api/repos/:repo/commit` (create/update a file) and `POST /api/repos/:repo/branches`, each requiring a session and verified push permission before touching GitHub (fail closed). The optional server `GITHUB_TOKEN` is never used for user writes.
+- **Commit UI**: split workspace (source + live preview) with commit message, target branch (typing a new name creates it), and a gated commit button with truthful explanations.
+- **Diff viewer** for `GET /api/repos/:repo/compare` (unified patches, add/delete rows, binary fallback).
+- **CSP-safe editing surface**: the production CSP keeps `style-src 'self'`, which rules out Monaco/CodeMirror (runtime `<style>` injection). The editor is an accessible textarea with a line-number gutter; Monaco stays deferred until a dedicated CSP review.
+
+### Milestone D — Collaboration writes
+- **Issues**: create, comment, close/reopen, and label management (`POST /api/repos/:repo/issues`, `…/comments`, `PATCH …/issues/:number`).
+- **Pull requests**: open PRs, submit reviews (COMMENT/APPROVE/REQUEST_CHANGES), and merge (merge/squash/rebase) with write-permission gating.
+- Every collaboration control degrades to a truthful sign-in or permission gate instead of pretending to work.
+
+### Milestone E — Guest issues with moderation
+- **Guest submission** (`POST /api/guest/issues`): Cloudflare Turnstile verification, honeypot trap, per-client rate limiting on hashed IPs, and PENDING rows in D1. **Guest emails live only in D1** — never in responses, GitHub issues, or logs.
+- **Moderation queue** (repository admins only): approve publishes the GitHub issue with the admin's own user token (never an installation token) and without the guest's email; reject discards it. Resend notification emails are best-effort.
+- Feature is **off (503)** until the D1 binding and Turnstile secret exist — never half-open. Schema: `migrations/0001_guest_issues.sql`.
+
+### Milestone F — Search, notifications, command palette, ops
+- **Search** (`GET /api/search`): org-scoped GitHub search across code, issues/PRs, and repositories with a dedicated page.
+- **Notifications** (`GET /api/notifications`) for signed-in users (their own token).
+- **Command palette** (Ctrl/⌘-K) with quick navigation and search jump.
+- **Ops hardening**: `X-Request-Id` on every API response with log correlation, and `GET /api/health` with in-isolate counters (no secrets or user data).
 
 ## Routes
 
@@ -66,6 +95,21 @@ The browser calls only same-origin `/api` routes. The Worker calls the GitHub RE
 | `GET /api/repos/:repo/readme?ref=` | README contents |
 | `GET /api/repos/:repo/raw?ref=&path=` | Bounded raw attachment |
 | `GET /api/repos/:repo/last-commit?ref=&path=` | Latest commit touching a path |
+| `GET /api/auth/login` · `GET /api/auth/callback` | OAuth sign-in flow |
+| `GET /api/auth/session` · `POST /api/auth/logout` | Session state (never contains tokens) and sign-out |
+| `GET /api/auth/permissions?owner=&repo=` | Permission detection for the signed-in user |
+| `POST /api/repos/:repo/commit` | Commit one file to a branch (session + push) |
+| `POST /api/repos/:repo/branches` | Create a branch (session + push) |
+| `GET /api/repos/:repo/compare?base=&head=` | Unified diff between two refs |
+| `POST /api/repos/:repo/issues` · `POST …/issues/:n/comments` | Create issue / comment (session) |
+| `PATCH /api/repos/:repo/issues/:n` | Update title/state/labels (session + triage) |
+| `POST /api/repos/:repo/pulls` · `POST …/pulls/:n/reviews` | Open PR / submit review (session) |
+| `PUT /api/repos/:repo/pulls/:n/merge` | Merge a pull request (session + write) |
+| `POST /api/guest/issues` · `GET /api/guest/config` | Guest submission (Turnstile + D1) and public config |
+| `GET /api/admin/moderation` · `POST …/:id/approve|reject` | Moderation queue (repository admins) |
+| `GET /api/search?q=&type=` | Org-scoped search (code, issues, repos) |
+| `GET /api/notifications` | Signed-in user's notifications |
+| `GET /api/health` | Liveness and coarse metrics |
 
 Organization-wide Issues and Pull Requests use fixed GitHub Search API queries scoped to `org:ankworks`; no arbitrary GitHub API proxy is exposed. Public event and repository data are sanitized field by field. Issue and PR Markdown skips raw HTML, validates links, and does not fetch embedded images.
 
@@ -135,10 +179,22 @@ npx wrangler deploy --dry-run
 
 Tests mock GitHub responses and do not require live credentials. They cover Worker routes and sanitization, fixed API origin/redirect handling, repository visibility, pagination, activity, tags, issues, pull requests, safe Markdown, and existing source-explorer behavior.
 
+## Secrets and bindings
+
+| Name | Used by | Required? |
+| --- | --- | --- |
+| `GITHUB_TOKEN` | Read-only upstream calls (rate limits) | Optional |
+| `GITHUB_APP_CLIENT_ID` / `GITHUB_APP_CLIENT_SECRET` | OAuth sign-in (B) | Optional — sign-in off without them |
+| `SESSION_ENCRYPTION_KEY` (32+ chars) | Session cookie encryption (B) | Optional — sign-in off without it |
+| `DB` (D1, `migrations/0001_guest_issues.sql`) | Guest issues (E) | Optional — guest form off without it |
+| `TURNSTILE_SECRET_KEY` / `TURNSTILE_SITE_KEY` | Guest captcha (E) | Optional — guest form off without them |
+| `RESEND_API_KEY` / `MODERATION_NOTIFY_EMAIL` | Moderation emails (E) | Optional (best-effort) |
+| `GITHUB_APP_ID` / `GITHUB_APP_PRIVATE_KEY` | Reserved for app-actor tasks | Not used for user writes |
+
 ## Known limitations
 
-- This milestone is read-only: GitHub App authentication, sessions, OAuth, comments/writes, branch creation, commits, and PR creation are not implemented.
-- Markdown editing is a local-draft workspace only: the split editor, unsaved-change warnings, and preview are real, but nothing is uploaded. Committing is disabled and Monaco replaces the source surface when authenticated file editing lands.
+- Monaco/CodeMirror are not used: the production CSP (`style-src 'self'`) blocks their runtime style injection. The editing surface is a CSP-safe textarea with line numbers; adopting Monaco requires an explicit CSP decision.
+- The Write API covers single-file commits; multi-file commits, delete/rename, and find-in-files remain future work.
 - Setext headings (`Title
 -----`) receive anchors but are not listed in the table of contents.
 - GitHub Search API result counts and pagination inherit GitHub's search limits and rate limits. Public event data is a recent activity feed, not a complete audit log.
