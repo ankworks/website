@@ -46,6 +46,8 @@ import { handleAuthRoute } from './auth';
 import { handleChangesRoute } from './changes';
 import { handleCollabWrite, isCollabWriteRequest } from './collab-writes';
 import { handleGuestRoute, isModerationRequest } from './guest';
+import { handleNotifications, handleSearch } from './search';
+import { handleHealth, newRequestId, trackApiOutcome } from './ops';
 import { handleOrganizationActivity, handleOrganizationIssues, handleRepositoryCollaboration, validateRepositoryCollaborationRequest } from './collaboration';
 import { logEvent } from './logging';
 import { requireFilePath, requirePath, requireRef, requireRepo } from './params';
@@ -304,12 +306,16 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
   const path = url.pathname;
   logEvent('debug', 'api_request', { method: request.method, path });
 
+  const requestId = newRequestId();
   const complete = (response: Response): Response => {
     logEvent(response.ok ? 'debug' : 'warn', 'api_response', {
       status: response.status,
       durationMs: Date.now() - startedAt,
       path,
+      requestId,
     });
+    trackApiOutcome(response, requestId);
+    response.headers.set('X-Request-Id', requestId);
     return response;
   };
 
@@ -341,6 +347,11 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
     if (path === '/api/guest/issues' || path === '/api/guest/config' || isModerationRequest(request.method, path)) {
       return complete(await handleGuestRoute(path, request, env));
     }
+
+    // Search, notifications, and health (Milestone F).
+    if (path === '/api/search') return complete(await handleSearch(request));
+    if (path === '/api/notifications') return complete(await handleNotifications(request, env));
+    if (path === '/api/health') return complete(handleHealth(request));
 
     if (request.method !== 'GET') {
       const response = errorResponse(405, 'METHOD_NOT_ALLOWED', 'Only GET is supported.');

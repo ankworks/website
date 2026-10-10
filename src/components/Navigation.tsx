@@ -12,6 +12,7 @@ const ITEMS: NavItem[] = [
   { label: 'Issues', to: '/issues', section: 'issues' },
   { label: 'Pull Requests', to: '/pulls', section: 'pulls' },
   { label: 'About', to: '/about', section: 'about' },
+  { label: 'Search', to: '/search', section: 'about' },
 ];
 
 function activeFor(section: NavItem['section'], pathname: string): boolean {
