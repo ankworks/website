@@ -11,6 +11,7 @@ import type {
   FileResponse,
   LastCommitResponse,
   OrganizationResponse,
+  OrgProfileReadmeResponse,
   ReadmeResponse,
   RepositoryDetailResponse,
   TreeResponse,
@@ -139,6 +140,13 @@ const isFileResponse: Guard<FileResponse> = (v): v is FileResponse =>
 const isReadmeResponse: Guard<ReadmeResponse> = (v): v is ReadmeResponse =>
   isRecord(v) && typeof v.kind === 'string' && typeof v.commit_sha === 'string';
 
+const isOrgProfileReadmeResponse: Guard<OrgProfileReadmeResponse> = (v): v is OrgProfileReadmeResponse =>
+  isRecord(v) &&
+  typeof v.kind === 'string' &&
+  typeof v.commit_sha === 'string' &&
+  typeof v.path === 'string' &&
+  typeof v.html_url === 'string';
+
 const isCommitsResponse: Guard<CommitsResponse> = (v): v is CommitsResponse =>
   isRecord(v) && Array.isArray(v.commits) && typeof v.has_next === 'boolean';
 
@@ -174,6 +182,9 @@ const isPullRequestDetailResponse: Guard<{ pull: PullRequestDetail }> = (v): v i
 
 export const explorerApi = {
   organization: () => getJson(buildUrl('/org'), isOrganizationResponse),
+
+  /** Organization profile README (`ankworks/.github` → `profile/README.md`). */
+  orgProfileReadme: () => getJson(buildUrl('/org/profile-readme'), isOrgProfileReadmeResponse),
 
   repository: (repo: string) =>
     getJson(buildUrl(`/repos/${encodeURIComponent(repo)}`), isRepositoryDetailResponse),

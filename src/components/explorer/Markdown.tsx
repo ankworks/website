@@ -1,19 +1,33 @@
 /**
  * README renderer: GitHub-flavored Markdown converted to React elements.
  *
- * Security:
- * - Raw HTML is skipped (skipHtml) and never parsed into the DOM.
+ * Security pipeline:
+ * - remark-gfm parses tables, task lists, and strikethrough.
+ * - `remarkHeadingIds` assigns GitHub-style anchor ids (with duplicate
+ *   suffixes) to every heading before rendering.
+ * - rehype-raw parses the raw HTML subset that GitHub allows; rehype-sanitize
+ *   then reduces it to the safe schema in `src/shared/markdown-schema.ts`
+ *   (no scripts, no event handlers, no style, no unsafe URL schemes).
  * - Links and images pass through the shared resolver: only http(s)/mailto
  *   links, and images only from an allowlisted set of hosts.
  * - Relative links become explorer routes pinned to the commit SHA.
+ * - ```mermaid fences render through the sanitized Mermaid pipeline; every
+ *   other fence is highlighted as text and never executed.
  */
 import { isValidElement, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
 import { Link } from 'react-router-dom';
 import { grammarForFenceTag } from '../../shared/languages';
+import { MARKDOWN_SANITIZE_SCHEMA } from '../../shared/markdown-schema';
 import { resolveMarkdownImage, resolveMarkdownLink, type LinkContext } from '../../shared/markdown-links';
+import { remarkHeadingIds, slugify } from '../../shared/markdown-toc';
 import HighlightedCode from './HighlightedCode';
+import MermaidDiagram from './MermaidDiagram';
+
+export { slugify };
 
 interface MarkdownProps {
   source: string;
@@ -29,21 +43,12 @@ function textOf(node: ReactNode): string {
   return '';
 }
 
-/** GitHub-style heading anchor: lowercase, punctuation removed, spaces to hyphens. */
-export function slugify(text: string): string {
-  return text
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
-    .replace(/\s/g, '-');
-}
-
 function buildComponents(context: LinkContext): Components {
   const heading = (level: 1 | 2 | 3 | 4 | 5 | 6) => {
-    function Heading({ children }: { children?: ReactNode }) {
+    function Heading({ children, id }: { children?: ReactNode; id?: string }) {
       const Tag = `h${level}` as const;
       return (
-        <Tag id={slugify(textOf(children))} className={`markdown-heading markdown-h${level}`}>
+        <Tag id={id ?? slugify(textOf(children))} className={`markdown-heading markdown-h${level}`}>
           {children}
         </Tag>
       );
@@ -76,7 +81,7 @@ function buildComponents(context: LinkContext): Components {
           return <span>{children}</span>;
       }
     },
-    img({ src, alt }) {
+    img({ src, alt, width, height, title }) {
       const url = resolveMarkdownImage(src, context);
       if (!url) {
         return <span className="text-muted italic">[image{alt ? `: ${alt}` : ''}]</span>;
@@ -85,6 +90,9 @@ function buildComponents(context: LinkContext): Components {
         <img
           src={url}
           alt={alt ?? ''}
+          {...(width !== undefined ? { width } : {})}
+          {...(height !== undefined ? { height } : {})}
+          {...(title !== undefined ? { title } : {})}
           loading="lazy"
           decoding="async"
           referrerPolicy="no-referrer"
@@ -97,9 +105,13 @@ function buildComponents(context: LinkContext): Components {
     },
     code({ className, children }) {
       const language = /language-(\S+)/.exec(className ?? '')?.[1];
+      const code = textOf(children).replace(/\n$/, '');
+      if (language === 'mermaid') {
+        return <MermaidDiagram code={code} />;
+      }
       const grammar = grammarForFenceTag(language);
       if (className && language) {
-        return <HighlightedCode code={textOf(children).replace(/\n$/, '')} grammar={grammar ?? ''} className={className} />;
+        return <HighlightedCode code={code} grammar={grammar ?? ''} className={className} />;
       }
       return <code className={className}>{children}</code>;
     },
@@ -120,7 +132,11 @@ function buildComponents(context: LinkContext): Components {
 export default function Markdown({ source, name, context }: MarkdownProps) {
   return (
     <article aria-label={`Rendered ${name}`} className="markdown-body">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={buildComponents(context)}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkHeadingIds]}
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]]}
+        components={buildComponents(context)}
+      >
         {source}
       </ReactMarkdown>
     </article>

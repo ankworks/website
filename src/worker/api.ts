@@ -3,6 +3,7 @@
  *
  * GET /api/repos                              public repositories (sanitized list)
  * GET /api/org                                organization profile
+ * GET /api/org/profile-readme                 organization profile README (fixed path)
  * GET /api/activity?limit=                    public organization activity
  * GET /api/issues and /api/pulls               public organization collaboration search
  * GET /api/repos/:repo                        repository metadata
@@ -40,7 +41,7 @@ import {
   repoApiPath,
 } from './github-client';
 import { sanitizeBranch, sanitizeCommit, sanitizeOrganization, sanitizeRepositoryDetail, sanitizeTag } from './sanitize';
-import { handleRepoRoute } from './explorer';
+import { handleOrgProfileReadme, handleRepoRoute } from './explorer';
 import { handleOrganizationActivity, handleOrganizationIssues, handleRepositoryCollaboration, validateRepositoryCollaborationRequest } from './collaboration';
 import { logEvent } from './logging';
 import { requireFilePath, requirePath, requireRef, requireRepo } from './params';
@@ -317,6 +318,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
   try {
     if (url.pathname === REPOS_PATH) return complete(await handleRepositoryList(request, env, ctx));
     if (url.pathname === '/api/org') return complete(await handleOrganization(request, env, ctx));
+    if (url.pathname === '/api/org/profile-readme') return complete(await handleOrgProfileReadme(request, env, ctx));
     if (url.pathname === '/api/activity') return complete(await handleOrganizationActivity(request, env, ctx));
     if (url.pathname === '/api/issues') return complete(await handleOrganizationIssues('issues', request, env, ctx));
     if (url.pathname === '/api/pulls') return complete(await handleOrganizationIssues('pulls', request, env, ctx));

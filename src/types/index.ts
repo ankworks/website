@@ -282,3 +282,20 @@ export interface ReadmeResponse {
   size: number;
   content?: string;
 }
+
+/**
+ * Organization profile README from GET /api/org/profile-readme.
+ * Always reads `ankworks/.github` → `profile/README.md`; both are fixed.
+ */
+export interface OrgProfileReadmeResponse {
+  repo: string;
+  path: string;
+  name: string;
+  commit_sha: string;
+  html_url: string;
+  size: number;
+  kind: 'text' | 'binary' | 'too-large';
+  /** Markdown source; present only when kind === 'text'. */
+  content?: string;
+  fetched_at: string;
+}

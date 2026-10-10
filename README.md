@@ -4,6 +4,9 @@ AnkWorks Forge is a read-only development platform for the public repositories o
 
 ## Milestone A
 
+- **Markdown platform**: a sanitized GitHub-flavored Markdown renderer (tables, task lists, fenced code with syntax highlighting, safe raw-HTML subset), Mermaid diagrams (lazy-loaded, strict security, CSP-safe styling), GitHub-style heading anchors with duplicate suffixes, and a table of contents beside long documents.
+- **Organization profile README**: `ankworks/.github/profile/README.md` rendered below the organization overview and featured projects, fetched live from GitHub with cache support and a graceful fallback when it is missing.
+- **Markdown file viewer**: Preview / Source / Edit modes for every Markdown file. Preview renders the document with an outline; Source shows the original Markdown with highlighting and line numbers; Edit opens a local-draft split workspace (source + live preview) with unsaved-change warnings — saving to GitHub stays disabled until sign-in and authorized commits land.
 - **Organization dashboard** with the official, locally hosted AnkWorks logo; live public repository, star, and fork totals; featured repositories ranked from current star counts; and recent public organization events.
 - **Repository exploration** with searchable public repositories, source browsing, README rendering, branches, tags, and paginated commit history.
 - **Issues** with organization-wide and repository-specific lists, open/closed/all filters, issue detail, labels, safe Markdown, comments, and pagination.
@@ -22,7 +25,7 @@ AnkWorks Forge is a read-only development platform for the public repositories o
 | `/pulls` | Public AnkWorks pull requests across repositories |
 | `/repos/:repo` | Repository home: source tree and README |
 | `/repos/:repo/tree/:ref/*` | Directory listing at a branch, tag, or commit |
-| `/repos/:repo/blob/:ref/*` | Text source viewer |
+| `/repos/:repo/blob/:ref/*` | File viewer; Markdown files open in Preview / Source / Edit modes (`?view=preview\|source\|edit`) |
 | `/repos/:repo/commits/:ref` | Paginated commit history |
 | `/repos/:repo/branches` | Branches and tags (`?view=tags`) |
 | `/repos/:repo/issues` | Repository issues; `/:number` opens issue details |
@@ -40,6 +43,7 @@ The browser calls only same-origin `/api` routes. The Worker calls the GitHub RE
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /api/org` | Sanitized AnkWorks organization profile |
+| `GET /api/org/profile-readme` | Organization profile README (`ankworks/.github` → `profile/README.md`, fixed path) |
 | `GET /api/repos` | Public organization repositories, paginated upstream |
 | `GET /api/activity?limit=N` | Recent public organization events |
 | `GET /api/issues?state=&page=` | Organization-wide public issue search |
@@ -72,7 +76,9 @@ Organization-wide Issues and Pull Requests use fixed GitHub Search API queries s
 - The upstream origin is fixed to `https://api.github.com`. Paths are limited to AnkWorks organization/repository resources plus the single fixed `/search/issues` endpoint. Search terms are constructed by the Worker, not accepted from a caller.
 - Cloudflare workerd supports `redirect: 'manual'` and `redirect: 'follow'`, not `redirect: 'error'`. The GitHub client uses **`redirect: 'manual'`** and follows only bounded redirects whose targets remain inside its allowlist. Redirect bodies are discarded.
 - Every upstream call has a timeout and bounded response reads. GitHub tokens, if configured, are sent upstream only and are never returned to the browser or written to logs.
-- Markdown raw HTML is skipped; links use safe protocols; code is displayed as text and never executed. The existing Content Security Policy and security headers remain in place.
+- Markdown is rendered through remark-gfm → rehype-raw → rehype-sanitize with a GitHub-style allowlist: raw HTML reduces to a safe formatting subset (no scripts, no event handlers, no `style`, no unsafe URL schemes), heading `id`s are generated server-side-in-code from the document text, and every link/image is checked again by the shared host/protocol resolvers. Code is displayed as text and never executed.
+- Mermaid fences render with `securityLevel: 'strict'` and `htmlLabels: false`; the SVG is scrubbed again (no script/foreignObject/iframe, no anchors, https-only URLs) and its styles are applied through the CSSOM so the `style-src 'self'` CSP keeps holding. Render failures fall back to the diagram source as text. The mermaid library is lazy-loaded and never part of the initial bundle.
+- The organization profile README endpoint reads only the fixed `ankworks/.github` → `profile/README.md` path (never request input), verifies the repository is public before serving, and fails closed for private or foreign repositories.
 - Static files use Workers Static Assets through the `ASSETS` binding and SPA fallback. `/api` routes continue through the existing Worker; no legacy `__STATIC_CONTENT` binding is used.
 
 Successful public responses use short shared cache lifetimes (typically 60 seconds for collaboration data and activity, up to 5 minutes for stable repository metadata). The in-memory browser cache is also short-lived. Errors are not cached.
@@ -93,9 +99,10 @@ src/
   App.tsx                    React Router table and code-split pages
   pages/                     dashboard, repository, issue, PR, branch/tag, and About pages
   components/                navigation, theme, collaboration, and source explorer UI
+  components/explorer/       Markdown renderer, TOC, Mermaid diagrams, Markdown editor (draft)
   api/explorer.ts            same-origin browser API client and response guards
   api/github.ts              public repository-list client
-  shared/                    validation, route builders, limits, Markdown safety
+  shared/                    validation, route builders, limits, Markdown safety, TOC slugs, sanitize schema
   worker/api.ts              Worker routing, repository visibility checks, caching
   worker/collaboration.ts    public activity, issues, pull requests, tags, sanitizers
   worker/github-client.ts    fixed-origin, bounded GitHub REST client
@@ -130,7 +137,10 @@ Tests mock GitHub responses and do not require live credentials. They cover Work
 
 ## Known limitations
 
-- This milestone is read-only: GitHub App authentication, sessions, OAuth, comments/writes, Monaco editing, branch creation, commits, and PR creation are not implemented.
+- This milestone is read-only: GitHub App authentication, sessions, OAuth, comments/writes, branch creation, commits, and PR creation are not implemented.
+- Markdown editing is a local-draft workspace only: the split editor, unsaved-change warnings, and preview are real, but nothing is uploaded. Committing is disabled and Monaco replaces the source surface when authenticated file editing lands.
+- Setext headings (`Title
+-----`) receive anchors but are not listed in the table of contents.
 - GitHub Search API result counts and pagination inherit GitHub's search limits and rate limits. Public event data is a recent activity feed, not a complete audit log.
 - A GitHub Wiki is opened on GitHub when enabled; wiki content is not rendered in Forge.
 - Direct GitHub links remain available for details that are not implemented in the local UI. GitHub is authoritative for permissions, branch protection, rulesets, and collaboration state.

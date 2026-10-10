@@ -108,6 +108,19 @@ describe('explorer UI', () => {
           },
         });
       }
+      if (p === '/api/org/profile-readme') {
+        return json({
+          repo: '.github',
+          path: 'profile/README.md',
+          name: 'README.md',
+          commit_sha: SHA,
+          html_url: 'https://github.com/ankworks/.github/blob/main/profile/README.md',
+          size: 100,
+          kind: 'text',
+          content: '# AnkWorks\n\nBuilding things that matter.\n\n## Projects\n\nSee the [website](../website/README.md).\n',
+          fetched_at: '2026-01-01T00:00:00Z',
+        });
+      }
       if (p === '/api/repos/website') {
         return json({
           repo: {
@@ -164,6 +177,13 @@ describe('explorer UI', () => {
         const path = url.searchParams.get('path') ?? '';
         const base = { repo: 'website', ref: url.searchParams.get('ref'), commit_sha: SHA, path, name: path.split('/').pop(), size: 10, blob_sha: 'e'.repeat(40), html_url: 'https://github.com/x' };
         if (path === 'src/index.ts') return json({ ...base, kind: 'text', content: 'export const a = 1;\nexport const b = 2;\n' });
+        if (path === 'alpha.md') {
+          return json({
+            ...base,
+            kind: 'text',
+            content: '# Alpha Guide\n\n## Setup\n\nSome **docs** content.\n',
+          });
+        }
         if (path === 'logo.png') return json({ ...base, kind: 'binary' });
         if (path === 'assets/video.mp4') return json({ ...base, kind: 'lfs-pointer' });
         if (path === 'big.log') return json({ ...base, kind: 'too-large', size: EXPLORER_LIMITS.RAW_MAX_BYTES + 1 });
@@ -223,6 +243,36 @@ describe('explorer UI', () => {
       expect(screen.getByRole('img', { name: 'AnkWorks organization logo' }).getAttribute('src')).toBe('/branding/ankworks-logo.webp');
       expect(await screen.findByText('Stars across public repositories')).toBeInTheDocument();
       expect(await screen.findByRole('list', { name: 'Recent organization activity' })).toHaveTextContent('pushed to main');
+    });
+
+    it('renders the organization profile README below the overview with a source link', async () => {
+      renderAt('/');
+      expect(await screen.findByRole('heading', { name: 'About AnkWorks' })).toBeInTheDocument();
+      const section = screen.getByRole('region', { name: 'About AnkWorks' });
+      // Rendered GitHub-flavored Markdown from ankworks/.github/profile/README.md.
+      expect(await within(section).findByRole('heading', { name: 'AnkWorks' })).toBeInTheDocument();
+      expect(within(section).getByText('Building things that matter.')).toBeInTheDocument();
+      expect(within(section).getByRole('heading', { name: 'Projects' })).toBeInTheDocument();
+      // Relative links resolve inside the explorer, pinned to the commit SHA.
+      expect(within(section).getByRole('link', { name: 'website' })).toHaveAttribute(
+        'href',
+        `/repos/.github/blob/${SHA}/website/README.md`
+      );
+      expect(within(section).getByRole('link', { name: /View source on GitHub/ })).toHaveAttribute(
+        'href',
+        'https://github.com/ankworks/.github/blob/main/profile/README.md'
+      );
+    });
+
+    it('shows a graceful fallback when the organization profile README is missing', async () => {
+      api = (url) => {
+        if (url.pathname === '/api/org/profile-readme') {
+          return errorJson(404, 'PROFILE_README_NOT_FOUND', 'The organization has not published a profile README.');
+        }
+        return defaultApi()(url);
+      };
+      renderAt('/');
+      expect(await screen.findByText('The organization has not published a profile README.')).toBeInTheDocument();
     });
 
     it('lists public repositories with their metadata', async () => {
@@ -340,6 +390,22 @@ describe('explorer UI', () => {
       expect(screen.getByRole('button', { name: 'Copy contents of index.ts' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Copy permalink to this file' })).toBeInTheDocument();
       expect(screen.getByRole('link', { name: /raw/i }).getAttribute('href')).toContain('/api/repos/website/raw');
+    });
+
+    it('opens Markdown files in the Preview / Source / Edit viewer', async () => {
+      const user = userEvent.setup();
+      renderAt('/repos/website/blob/main/alpha.md');
+      expect(await screen.findByRole('tab', { name: 'Preview' })).toHaveAttribute('aria-selected', 'true');
+      expect(await screen.findByRole('heading', { name: 'Setup' })).toBeInTheDocument();
+
+      await user.click(screen.getByRole('tab', { name: 'Source' }));
+      await waitFor(() => expect(screen.getByRole('tab', { name: 'Source' })).toHaveAttribute('aria-selected', 'true'));
+      expect(screen.getByRole('region', { name: 'Source of alpha.md' })).toBeInTheDocument();
+
+      await user.click(screen.getByRole('tab', { name: 'Edit' }));
+      await waitFor(() => expect(screen.getByRole('tab', { name: 'Edit' })).toHaveAttribute('aria-selected', 'true'));
+      expect(screen.getByLabelText('Markdown source of alpha.md')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /commit changes/i })).toBeDisabled();
     });
 
     it('shows binary, LFS, symlink and submodule notices instead of content', async () => {

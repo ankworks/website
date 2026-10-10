@@ -10,6 +10,7 @@ import Breadcrumbs from './Breadcrumbs';
 import BranchSelector from './BranchSelector';
 import CodeView from './CodeView';
 import { DownloadIcon, LinkIcon } from './icons';
+import MarkdownFileView from './MarkdownFileView';
 import { CopyButton, ErrorState, ExternalLink, Notice, Panel, Skeleton } from './ui';
 
 interface FileViewProps {
@@ -103,18 +104,24 @@ function FileContent({ file, repo, gitRef, path }: FileViewProps & { file: FileR
 function FileBody({
   file,
   path,
+  repo,
   grammar,
   rawUrl,
 }: FileViewProps & { file: FileResponse; grammar: string | null; rawUrl: string }) {
   switch (file.kind) {
     case 'text':
-      return file.content !== undefined ? (
-        <CodeView content={file.content} grammar={grammar} fileName={fileName(path)} />
-      ) : (
-        <div className="p-4">
-          <Notice title="No content">The file is empty or its content could not be read.</Notice>
-        </div>
-      );
+      if (file.content === undefined) {
+        return (
+          <div className="p-4">
+            <Notice title="No content">The file is empty or its content could not be read.</Notice>
+          </div>
+        );
+      }
+      // Markdown documents get the Forge-style Preview / Source / Edit viewer.
+      if (grammar === 'markdown') {
+        return <MarkdownFileView file={{ ...file, kind: 'text', content: file.content }} repo={repo} path={path} />;
+      }
+      return <CodeView content={file.content} grammar={grammar} fileName={fileName(path)} />;
     case 'binary':
       return (
         <Notice title="Binary file not shown">
