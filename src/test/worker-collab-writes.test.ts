@@ -99,6 +99,27 @@ describe('collaboration writes', () => {
       expect(((await response.json()) as { number: number }).number).toBe(7);
     });
 
+    it('reports a repository with Issues turned off as FEATURE_DISABLED, not an outage', async () => {
+      // GitHub answers 410 "Issues has been disabled in this repository." — seen
+      // for real on ankworks/website. Mapping it to GITHUB_UNAVAILABLE sent users
+      // chasing an outage that did not exist.
+      stubPermissions({ pull: true }, () => json({ message: 'Issues has been disabled in this repository.', status: '410' }, 410));
+      const c = await cookie();
+      const response = await handleApiRequest(writeRequest('/api/repos/website/issues', 'POST', { title: 'Bug' }, c), env());
+      expect(response.status).toBe(410);
+      const body = (await response.json()) as { error: string; message: string };
+      expect(body.error).toBe('FEATURE_DISABLED');
+      expect(body.message).toMatch(/Issues has been disabled/i);
+    });
+
+    it('reports an upstream 403 as FORBIDDEN instead of an outage', async () => {
+      stubPermissions({ pull: true }, () => json({ message: 'Resource not accessible by personal access token' }, 403));
+      const c = await cookie();
+      const response = await handleApiRequest(writeRequest('/api/repos/website/issues', 'POST', { title: 'Bug' }, c), env());
+      expect(response.status).toBe(403);
+      expect(((await response.json()) as { error: string }).error).toBe('FORBIDDEN');
+    });
+
     it('validates title and labels before any upstream call', async () => {
       const c = await cookie();
       for (const body of [{ title: '' }, { title: 'ok', labels: ['bad label!'] }, { title: 'ok', labels: Array(30).fill('x') }]) {

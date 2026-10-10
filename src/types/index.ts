@@ -170,6 +170,8 @@ export interface RepositoryDetail extends Repository {
   license: string | null;
   homepage: string | null;
   has_wiki: boolean;
+  /** False when the repository has turned GitHub Issues off (writes return 410). */
+  has_issues: boolean;
 }
 
 export interface RepositoryDetailResponse {

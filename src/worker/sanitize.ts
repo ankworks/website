@@ -83,6 +83,7 @@ export function sanitizeRepositoryDetail(input: unknown, requestedName: string):
     license: licenseName && licenseName !== 'NOASSERTION' ? licenseName : null,
     homepage: asHttpsUrl(raw.homepage) ?? null,
     has_wiki: raw.has_wiki === true,
+    has_issues: raw.has_issues === true,
   };
 }
 

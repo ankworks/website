@@ -9,41 +9,14 @@
  * out or lacks permission — nothing pretends to work while gated.
  */
 
-import { useCallback, useEffect, useState } from 'react';
-import { authApi } from '../../api/auth';
+import { useCallback, useState } from 'react';
 import { collabWrites } from '../../api/collab-writes';
 import { ExplorerApiError } from '../../api/explorer';
 import { useAuth } from '../../auth/AuthContext';
+import { useRepoPermissions } from '../../hooks/useRepoPermissions';
+import { ORG_NAME } from '../../shared/validation';
 import { CommitIcon } from '../explorer/icons';
 import { Notice } from '../explorer/ui';
-
-function usePermissions(repo: string) {
-  const { status } = useAuth();
-  const [state, setState] = useState<{ loaded: boolean; canWrite: boolean; canTriage: boolean }>({
-    loaded: false,
-    canWrite: false,
-    canTriage: false,
-  });
-  useEffect(() => {
-    if (status !== 'authenticated') {
-      setState({ loaded: status !== 'loading', canWrite: false, canTriage: false });
-      return undefined;
-    }
-    let cancelled = false;
-    authApi
-      .permissions('ankworks', repo)
-      .then((response) => {
-        if (!cancelled) setState({ loaded: true, canWrite: response.canWrite, canTriage: response.canTriage });
-      })
-      .catch(() => {
-        if (!cancelled) setState({ loaded: true, canWrite: false, canTriage: false });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [repo, status]);
-  return state;
-}
 
 function SignInNotice({ action }: { action: string }) {
   const { authEnabled } = useAuth();
@@ -133,13 +106,13 @@ export function CommentForm({ repo, number, onPosted, label = 'Add a comment' }:
 
 export function IssueControls({ repo, number, state, labels, onChanged }: { repo: string; number: number; state: string; labels: string[]; onChanged?: () => void }) {
   const { status } = useAuth();
-  const permissions = usePermissions(repo);
+  const permissions = useRepoPermissions(repo);
   const [labelText, setLabelText] = useState('');
   const { busy, error, done, run } = useSubmit();
 
   if (status !== 'authenticated') return <SignInNotice action="Manage this issue" />;
   if (permissions.loaded && !permissions.canTriage) {
-    return <p className="text-xs text-muted">Managing labels and issue state requires triage access to {`ankworks/${repo}`}.</p>;
+    return <p className="text-xs text-muted">Managing labels and issue state requires triage access to {`${ORG_NAME}/${repo}`}.</p>;
   }
 
   const toggleState = () =>
@@ -201,14 +174,14 @@ const REVIEW_EVENTS = ['COMMENT', 'APPROVE', 'REQUEST_CHANGES'] as const;
 
 export function PullRequestControls({ repo, number, state, onChanged }: { repo: string; number: number; state: string; onChanged?: () => void }) {
   const { status } = useAuth();
-  const permissions = usePermissions(repo);
+  const permissions = useRepoPermissions(repo);
   const [reviewBody, setReviewBody] = useState('');
   const [mergeMethod, setMergeMethod] = useState<'merge' | 'squash' | 'rebase'>('squash');
   const { busy, error, done, run } = useSubmit();
 
   if (status !== 'authenticated') return <SignInNotice action="Review or merge this pull request" />;
   if (permissions.loaded && !permissions.canTriage && !permissions.canWrite) {
-    return <p className="text-xs text-muted">Reviewing or merging requires triage access to {`ankworks/${repo}`}.</p>;
+    return <p className="text-xs text-muted">Reviewing or merging requires triage access to {`${ORG_NAME}/${repo}`}.</p>;
   }
 
   const submitReview = (event: (typeof REVIEW_EVENTS)[number]) =>
@@ -285,7 +258,7 @@ export function PullRequestControls({ repo, number, state, onChanged }: { repo: 
           </button>
         </div>
       ) : (
-        <p className="text-xs text-muted">Merging requires write access to {`ankworks/${repo}`}.</p>
+        <p className="text-xs text-muted">Merging requires write access to {`${ORG_NAME}/${repo}`}.</p>
       )}
       <Feedback error={error} done={done} />
     </section>

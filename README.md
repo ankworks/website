@@ -8,7 +8,7 @@ AnkWorks Forge is a read-only development platform for the public repositories o
 
 - **Markdown platform**: a sanitized GitHub-flavored Markdown renderer (tables, task lists, fenced code with syntax highlighting, safe raw-HTML subset), Mermaid diagrams (lazy-loaded, strict security, CSP-safe styling), GitHub-style heading anchors with duplicate suffixes, and a table of contents beside long documents.
 - **Organization profile README**: `ankworks/.github/profile/README.md` rendered below the organization overview and featured projects, fetched live from GitHub with cache support and a graceful fallback when it is missing.
-- **Markdown file viewer**: Preview / Source / Edit modes for every Markdown file. Preview renders the document with an outline; Source shows the original Markdown with highlighting and line numbers; Edit opens a local-draft split workspace (source + live preview) with unsaved-change warnings — saving to GitHub stays disabled until sign-in and authorized commits land.
+- **Markdown file viewer**: Preview / Source / Edit modes for every Markdown file. Preview renders the document with an outline; Source shows the original Markdown with highlighting and line numbers; Edit opens a split workspace (source + live preview) with unsaved-change warnings. Committing is gated behind sign-in and verified push permission (Milestone C).
 - **Organization dashboard** with the official, locally hosted AnkWorks logo; live public repository, star, and fork totals; featured repositories ranked from current star counts; and recent public organization events.
 - **Repository exploration** with searchable public repositories, source browsing, README rendering, branches, tags, and paginated commit history.
 - **Issues** with organization-wide and repository-specific lists, open/closed/all filters, issue detail, labels, safe Markdown, comments, and pagination.
@@ -23,12 +23,12 @@ AnkWorks Forge is a read-only development platform for the public repositories o
 
 ### Milestone C — Commits, branches, diff viewer
 - **Authenticated writes**: `POST /api/repos/:repo/commit` (create/update a file) and `POST /api/repos/:repo/branches`, each requiring a session and verified push permission before touching GitHub (fail closed). The optional server `GITHUB_TOKEN` is never used for user writes.
-- **Commit UI**: split workspace (source + live preview) with commit message, target branch (typing a new name creates it), and a gated commit button with truthful explanations.
+- **Commit UI**: split workspace (source + live preview) with commit message, target branch (typing a new name creates it), and a gated commit button with truthful explanations. Every editable text file has an Edit mode — Markdown files keep Preview / Source / Edit, all other text files get Source / Edit — and the file viewer shows an **Edit file** action once `GET /api/auth/permissions` confirms write access. The gate is advisory only: the Worker re-verifies push permission with the user's own token on every write.
 - **Diff viewer** for `GET /api/repos/:repo/compare` (unified patches, add/delete rows, binary fallback).
 - **CSP-safe editing surface**: the production CSP keeps `style-src 'self'`, which rules out Monaco/CodeMirror (runtime `<style>` injection). The editor is an accessible textarea with a line-number gutter; Monaco stays deferred until a dedicated CSP review.
 
 ### Milestone D — Collaboration writes
-- **Issues**: create, comment, close/reopen, and label management (`POST /api/repos/:repo/issues`, `…/comments`, `PATCH …/issues/:number`).
+- **Issues**: create, comment, close/reopen, and label management (`POST /api/repos/:repo/issues`, `…/comments`, `PATCH …/issues/:number`). The **New issue** composer (`/repos/:repo/issues/new`, linked from every repository issue list) is the primary path and depends only on a signed-in session — never on D1 or Turnstile, which back the separate guest queue. Creating an issue needs read access, which every signed-in GitHub user has on a public repository; repositories with GitHub Issues turned off get a truthful notice instead of a form that cannot work.
 - **Pull requests**: open PRs, submit reviews (COMMENT/APPROVE/REQUEST_CHANGES), and merge (merge/squash/rebase) with write-permission gating.
 - Every collaboration control degrades to a truthful sign-in or permission gate instead of pretending to work.
 
@@ -54,10 +54,11 @@ AnkWorks Forge is a read-only development platform for the public repositories o
 | `/pulls` | Public AnkWorks pull requests across repositories |
 | `/repos/:repo` | Repository home: source tree and README |
 | `/repos/:repo/tree/:ref/*` | Directory listing at a branch, tag, or commit |
-| `/repos/:repo/blob/:ref/*` | File viewer; Markdown files open in Preview / Source / Edit modes (`?view=preview\|source\|edit`) |
+| `/repos/:repo/blob/:ref/*` | File viewer; Markdown files open in Preview / Source / Edit modes, other text files in Source / Edit (`?view=preview\|source\|edit`) |
 | `/repos/:repo/commits/:ref` | Paginated commit history |
 | `/repos/:repo/branches` | Branches and tags (`?view=tags`) |
 | `/repos/:repo/issues` | Repository issues; `/:number` opens issue details |
+| `/repos/:repo/issues/new` | New issue composer (requires sign-in) |
 | `/repos/:repo/pulls` | Repository pull requests; `/:number` opens PR details |
 | `/about` | Organization and platform information |
 
@@ -101,7 +102,7 @@ The browser calls only same-origin `/api` routes. The Worker calls the GitHub RE
 | `POST /api/repos/:repo/commit` | Commit one file to a branch (session + push) |
 | `POST /api/repos/:repo/branches` | Create a branch (session + push) |
 | `GET /api/repos/:repo/compare?base=&head=` | Unified diff between two refs |
-| `POST /api/repos/:repo/issues` · `POST …/issues/:n/comments` | Create issue / comment (session) |
+| `POST /api/repos/:repo/issues` · `POST …/issues/:n/comments` | Create issue / comment (session). Upstream refusals stay truthful: `410 FEATURE_DISABLED` when the repository has Issues off, `403 FORBIDDEN` when GitHub rejects the account |
 | `PATCH /api/repos/:repo/issues/:n` | Update title/state/labels (session + triage) |
 | `POST /api/repos/:repo/pulls` · `POST …/pulls/:n/reviews` | Open PR / submit review (session) |
 | `PUT /api/repos/:repo/pulls/:n/merge` | Merge a pull request (session + write) |

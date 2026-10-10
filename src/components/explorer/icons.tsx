@@ -197,3 +197,16 @@ export const CommentIcon = (props: IconProps) => (
     <path d="M2 3.5h12v8H7l-3.5 2v-2H2v-8Z" />
   </Svg>
 );
+
+export const EditIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M11.25 2.75 13.25 4.75 5.5 12.5 2.75 13.25 3.5 10.5 11.25 2.75Z" />
+    <path d="M10 4 12 6" />
+  </Svg>
+);
+
+export const PlusIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M8 3v10M3 8h10" />
+  </Svg>
+);
