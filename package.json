@@ -12,7 +12,7 @@
     "test": "vitest",
     "test:coverage": "vitest --coverage",
     "preview": "vite preview",
-    "deploy": "wrangler pages deploy .vite/deploy --project-name ankworks-website",
+    "deploy": "wrangler deploy",
     "worker:dev": "wrangler dev",
     "worker:deploy": "wrangler deploy"
   },
