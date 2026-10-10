@@ -2,52 +2,45 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AnkWorks — Independent Software Development</title>
     <meta name="description" content="Explore open-source projects, developer tools, and software experiments built by AnkWorks." />
-    <meta name="keywords" content="AnkWorks, open source, software, development, projects, GitHub" />
     <meta name="author" content="AnkWorks" />
     <meta name="robots" content="index, follow" />
-    
-    <!-- Open Graph / Facebook -->
+    <meta name="theme-color" content="#09090B" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://works.ankb.qzz.io/" />
+
+    <!-- Favicon (SVG; add PNG/Apple touch icons to public/ when available) -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- Open Graph -->
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://works.ankb.qzz.io" />
+    <meta property="og:site_name" content="AnkWorks" />
+    <meta property="og:url" content="https://works.ankb.qzz.io/" />
     <meta property="og:title" content="AnkWorks — Independent Software Development" />
     <meta property="og:description" content="Explore open-source projects, developer tools, and software experiments built by AnkWorks." />
     <meta property="og:image" content="https://avatars.githubusercontent.com/u/340385619" />
-    
-    <!-- Twitter / X -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@AnkWorks" />
+
+    <!-- Twitter card -->
+    <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="AnkWorks — Independent Software Development" />
     <meta name="twitter:description" content="Explore open-source projects, developer tools, and software experiments built by AnkWorks." />
     <meta name="twitter:image" content="https://avatars.githubusercontent.com/u/340385619" />
-    
-    <!-- Canonical URL -->
-    <link rel="canonical" href="https://works.ankb.qzz.io" />
-    
-    <!-- Favicon -->
-    <link rel="icon" type="image/png" href="/favicon.png" sizes="32x32" />
-    <link rel="icon" type="image/png" href="/favicon-16x16.png" sizes="16x16" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    
-    <!-- Preconnect -->
+
+    <!-- Web fonts (loaded here, not via CSS @import, so Tailwind directives stay first) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    
-    <!-- Security Headers -->
-    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
-    <meta http-equiv="X-Frame-Options" content="DENY" />
-    <meta http-equiv="X-XSS-Protection" content="1; mode=block" />
-    <meta name="referrer" content="strict-origin-when-cross-origin" />
-    
-    <!-- Theme Color -->
-    <meta name="theme-color" content="#09090B" />
-    
-    <title>AnkWorks — Independent Software Development</title>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    />
   </head>
   <body>
     <div id="root"></div>
+    <noscript>AnkWorks requires JavaScript to display the project list. Visit https://github.com/ankworks to browse repositories directly.</noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

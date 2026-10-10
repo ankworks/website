@@ -2,6 +2,10 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
+// Local dev: the Vite dev server serves the frontend and proxies /api to the
+// Worker running under `npm run worker:dev` (wrangler dev on port 8787).
+const WORKER_DEV_URL = 'http://127.0.0.1:8787';
+
 export default defineConfig({
   plugins: [react()],
   root: '.',
@@ -17,8 +21,11 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: '.vite/deploy',
-    sourcemap: true,
+    // Must match assets.directory in wrangler.jsonc.
+    outDir: 'dist',
+    emptyOutDir: true,
+    // Source maps are not published to production assets.
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks: {
@@ -29,24 +36,17 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    host: true,
-  },
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'json', 'html'],
-      exclude: [
-        'node_modules/',
-        'public/',
-        '.vite/',
-        'dist/',
-        '**/*.config.*',
-        '**/wrangler.*',
-      ],
+    host: '0.0.0.0',
+    allowedHosts: ['.e2b.app', 'localhost'],
+    proxy: {
+      '/api': {
+        target: WORKER_DEV_URL,
+        changeOrigin: false,
+      },
     },
+  },
+  preview: {
+    port: 4173,
+    host: '0.0.0.0',
   },
 });

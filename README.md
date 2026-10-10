@@ -26,7 +26,7 @@ The official website for AnkWorks, an independent software development organizat
 - **TypeScript** - Type-safe Worker code
 
 ### Deployment
-- **Cloudflare Pages** - Static site hosting
+- **Cloudflare Workers** with Workers Static Assets (Wrangler 4)
 - **Cloudflare Workers** - API routing
 - **Wrangler** - Cloudflare deployment tool
 
@@ -62,6 +62,7 @@ ankworks-website/
 │   │   └── useStats.ts       # Statistics hook
 │   │
 │   ├── pages/                # Page components
+│   ├── shared/               # Repository sanitization shared by Worker and browser
 │   │   ├── About.tsx         # About page
 │   │   ├── Home.tsx          # Home page
 │   │   └── Projects.tsx      # Projects page
@@ -99,8 +100,8 @@ ankworks-website/
 
 ### Prerequisites
 
-- Node.js 18+ 
-- npm 9+
+- Node.js 22 or newer (tested with Node.js 24.21.0)
+- npm 10+
 - Git
 
 ### Installation
@@ -110,103 +111,138 @@ ankworks-website/
 git clone https://github.com/ankworks/website.git
 cd website
 
-# Install dependencies
+# Clean, reproducible install from the lockfile
 npm ci
 
-# Start development server
+# Start the frontend dev server (http://localhost:3000)
 npm run dev
 ```
 
-The development server will start at `http://localhost:3000`
+The `/api/*` routes are served by the Worker. To exercise them during development, run the Worker in a second terminal:
+
+```bash
+npm run worker:dev   # builds dist/ and runs wrangler dev on http://127.0.0.1:8787
+```
+
+The Vite dev server proxies `/api` requests to that port.
 
 ### Available Scripts
 
 | Script | Description |
 |--------|-------------|
-| `npm run dev` | Start development server |
-| `npm run build` | Build for production |
-| `npm run typecheck` | Run TypeScript type checking |
-| `npm run lint` | Run ESLint |
-| `npm run lint:fix` | Fix ESLint issues |
-| `npm run test` | Run tests |
-| `npm run test:coverage` | Run tests with coverage |
-| `npm run preview` | Preview production build |
-| `npm run deploy` | Build and deploy to Cloudflare |
+| `npm run dev` | Vite dev server for the frontend (proxies `/api` to port 8787) |
+| `npm run worker:dev` | Build, then run the Worker locally with Wrangler on port 8787 |
+| `npm run build` | Production build into `dist/` |
+| `npm run typecheck` | TypeScript checks for the app, the Worker, and the Vite config |
+| `npm run lint` | ESLint (zero warnings allowed) |
+| `npm run test` | Vitest suite (GitHub API is always mocked) |
+| `npm run test:coverage` | Tests with coverage |
+| `npm run preview` | Preview the production build with Vite |
+| `npm run deploy` | Build, then `wrangler deploy` to Cloudflare (requires authentication) |
 
 ## 🔧 GitHub API Integration
 
-The website fetches repository data from the GitHub REST API using the following endpoint:
+The browser never calls GitHub directly. It calls the Worker endpoint:
 
 ```
-GET https://api.github.com/orgs/ankworks/repos
+GET /api/repos
 ```
 
-### Features
+The Worker fetches public repositories of the `ankworks` organization from the GitHub REST API:
 
-- **Caching**: Repository data is cached for 5 minutes to reduce API calls
-- **Pagination**: Automatically handles pagination for organizations with many repositories
-- **Rate Limiting**: Respects GitHub's rate limits and handles errors gracefully
-- **Data Normalization**: Normalizes GitHub API responses to consistent types
-- **Fork Filtering**: Excludes forks by default with option to include them
-
-### Environment Variables
-
-Optional environment variables for the Cloudflare Worker:
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `GITHUB_TOKEN` | GitHub personal access token | No |
-
-If `GITHUB_TOKEN` is provided as a Worker secret, it will be used for authenticated requests, which provides a higher rate limit.
-
-**Note**: Never commit tokens to Git. Use Cloudflare Worker secrets:
-
-```bash
-# Set secret using Wrangler
-npx wrangler secret put GITHUB_TOKEN
+```
+GET https://api.github.com/orgs/ankworks/repos?type=public&per_page=100&page=N
 ```
 
-## ☁️ Cloudflare Deployment
+### Behavior
 
-### Prerequisites
+- **Public only**: requests use `type=public`, and any item with `private: true` is dropped.
+- **Pagination**: follows the `Link: rel="next"` header until there are no more pages. No repository count is assumed. A safety ceiling of 30 pages returns an explicit error instead of partial data.
+- **Pagination link validation**: only links to `api.github.com` for this organization are followed.
+- **Timeouts**: each upstream request is aborted after 8 seconds (`504 GITHUB_TIMEOUT`).
+- **Rate limits**: a rate-limited upstream response becomes `429 GITHUB_RATE_LIMITED` with a `Retry-After` header.
+- **Other errors**: `404 ORG_NOT_FOUND`, `502 GITHUB_UNAVAILABLE`, `502 GITHUB_UNREACHABLE`, `502 INVALID_UPSTREAM_RESPONSE`. Error responses are never cached and contain no upstream secrets.
+- **Sanitization**: each repository is copied field by field. Only `https://github.com/` links are accepted. Descriptions are truncated and topics are capped.
+- **Caching**: successful responses are cached for 5 minutes via `caches.default` (`Cache-Control: public, max-age=300`). The cache key ignores query strings. `X-Cache: HIT|MISS` indicates the cache state.
+- **Partial failures**: if any page fails, the whole request fails. The API never returns a partial list as if it were complete.
 
-- Cloudflare account
-- Wrangler CLI installed (`npm install -g wrangler`)
-- Cloudflare API token with Pages permissions
-
-### Configuration
-
-1. Update `wrangler.jsonc` with your Cloudflare configuration:
+Response shape:
 
 ```json
 {
-  "name": "ankworks-website",
-  "pages_build_output_dir": ".vite/deploy",
-  "compatibility_date": "2024-01-01"
+  "org": "ankworks",
+  "repos": [{ "id": 1, "name": "website", "full_name": "ankworks/website", "...": "..." }],
+  "total_count": 1,
+  "fetched_at": "2026-10-10T00:00:00.000Z"
 }
 ```
 
-2. Authenticate with Cloudflare:
+### Environment Variables
+
+| Variable | Where | Description | Required |
+|----------|-------|-------------|----------|
+| `GITHUB_TOKEN` | Worker secret | Optional GitHub token for higher rate limits. Sent only to `api.github.com`, never returned to clients | No |
+| `ASSETS` | Binding (set by `wrangler.jsonc`) | Workers Static Assets binding | Automatic |
+
+Set the secret with Wrangler. Never commit tokens, and never put them in `.env` files that are committed:
 
 ```bash
-npx wrangler login
+npx wrangler secret put GITHUB_TOKEN
 ```
 
-3. Deploy to Cloudflare Pages:
+Only the public repositories of the organization are ever displayed, even when a token with wider access is configured.
+
+## ☁️ Cloudflare Deployment
+
+The site is deployed as a single Worker (`github`, set by `name` in `wrangler.jsonc`) using **Workers Static Assets** with Wrangler 4.
+
+### How it is wired
+
+| Concern | Configuration |
+|---------|---------------|
+| Worker entry | `main: src/worker/index.ts` |
+| Static files | `assets.directory: ./dist` (the Vite output, see `vite.config.ts` → `build.outDir`) |
+| Binding | `assets.binding: ASSETS` (used for every non-API request) |
+| API routing | `assets.run_worker_first: ["/api", "/api/*"]` so `/api/*` always reaches the Worker |
+| SPA routes | `assets.not_found_handling: single-page-application` serves `index.html` for `/projects`, `/about`, etc. |
+| Security headers and CSP | `public/_headers` (copied to `dist/` and applied to static asset responses) |
+| Custom domain | `routes: [{ pattern: "works.ankb.qzz.io", custom_domain: true }]` |
+
+The legacy `__STATIC_CONTENT` mechanism and Pages settings (`pages_build_output_dir`) are not used.
+
+### Deploy
 
 ```bash
-npm run deploy
+npm ci
+npm run typecheck && npm run lint && npm run test
+npm run deploy        # vite build, then wrangler deploy
 ```
+
+Authenticate first with `npx wrangler login`, or set `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the CI environment. The token needs Workers Scripts edit permission and, for the custom domain, Zone DNS and Workers Routes permission on the `ankb.qzz.io` zone.
+
+To validate the bundle and configuration without deploying:
+
+```bash
+npx wrangler deploy --dry-run --outdir .wrangler/dry-run
+```
+
+### Cloudflare Git integration (Workers Builds)
+
+If the repository is connected through the Cloudflare dashboard:
+
+- The Worker name in the dashboard must match `name` in `wrangler.jsonc` (currently `github`). A mismatch makes the deploy target a different Worker.
+- Build command: `npm ci && npm run build`. Deploy command: `npx wrangler deploy`.
+- Node.js version: 22 or 24.
 
 ### Custom Domain
 
-To configure a custom domain:
+`works.ankb.qzz.io` is declared in `wrangler.jsonc`. For it to work:
 
-1. In Cloudflare Dashboard, go to Pages
-2. Select your project
-3. Navigate to "Custom domains"
-4. Add your domain (e.g., `works.ankb.qzz.io`)
-5. Configure DNS records as instructed
+1. The `ankb.qzz.io` zone must exist in the same Cloudflare account as the Worker.
+2. No other Worker or DNS record may already use `works.ankb.qzz.io`.
+3. Deploying the Worker attaches the custom domain automatically.
+
+## 🎨 Design System
 
 ## 🎨 Design System
 
@@ -288,16 +324,11 @@ npm run test -- --watch
 
 The website is optimized for performance:
 
-- **Static Generation**: Pre-rendered pages for fast loading
-- **Code Splitting**: Automatic code splitting with Vite
-- **Lazy Loading**: Images and components loaded as needed
-- **Efficient API**: Cached GitHub API responses
-- **Minimal Dependencies**: Only essential libraries used
-- **Optimized Assets**: Compressed and optimized static assets
+- **Code Splitting**: Vendor code is split into its own chunk with Vite
+- **Edge Caching**: `/api/repos` responses are cached for 5 minutes
+- **Minimal Dependencies**: Runtime dependencies are React, React Router, and Framer Motion
 
-**Target Scores**:
-- Lighthouse Performance: ≥ 90
-- Lighthouse Accessibility: ≥ 90
+**Targets** (goals, not measured results): Lighthouse Performance ≥ 90, Accessibility ≥ 90. No Lighthouse run has been recorded for this repository yet.
 
 ## 🔒 Security
 
@@ -308,8 +339,9 @@ Security best practices implemented:
 - **URL Validation**: External URLs are validated before use
 - **No HTML Injection**: No dangerous HTML injection vulnerabilities
 - **No Exposed Secrets**: API tokens are never exposed in client code
-- **Security Headers**: Appropriate security headers configured
-- **Content Security Policy**: Sensible CSP for modern web applications
+- **Security Headers**: `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`, `Strict-Transport-Security` (see `public/_headers`)
+- **Content Security Policy**: `script-src 'self'`; `style-src` allows Google Fonts and inline styles (required by React/Framer Motion); `img-src` allows GitHub avatars; `frame-ancestors 'none'`
+- **No Third-Party Scripts**: no analytics or tracking scripts are loaded
 
 ## 🤝 Contributing
 

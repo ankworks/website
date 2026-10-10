@@ -1,254 +1,181 @@
-import type { Repository } from '../types';
-
-const GITHUB_API_BASE = 'https://api.github.com';
-const ORG_NAME = 'ankworks';
-const USER_AGENT = 'AnkWorks-Website';
-
-// Cache configuration
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-let reposCache: { data: Repository[]; timestamp: number } | null = null;
-
 /**
- * Normalize GitHub repository data to our internal format
+ * Browser client for the AnkWorks Worker API (GET /api/repos).
+ *
+ * The browser never calls api.github.com directly: the Worker owns the upstream
+ * request, caching, pagination, and sanitization.
  */
-function normalizeRepository(repo: any): Repository {
-  return {
-    id: repo.id || 0,
-    name: repo.name || '',
-    full_name: repo.full_name || '',
-    description: repo.description || null,
-    html_url: repo.html_url || '',
-    language: repo.language || null,
-    stargazers_count: repo.stargazers_count || 0,
-    forks_count: repo.forks_count || 0,
-    updated_at: repo.updated_at || '',
-    created_at: repo.created_at || '',
-    archived: repo.archived || false,
-    fork: repo.fork || false,
-    size: repo.size || 0,
-    open_issues_count: repo.open_issues_count || 0,
-    topics: repo.topics || [],
-  };
+import type { ApiError, OrganizationStats, Repository, RepositoriesResponse } from '../types';
+import { normalizeRepository, isValidRepository, sanitizeRepository } from '../shared/repository';
+
+export { normalizeRepository, isValidRepository };
+
+const REPOS_ENDPOINT = '/api/repos';
+const REQUEST_TIMEOUT_MS = 15000;
+/** Client-side cache duration; matches the Worker cache TTL (5 minutes). */
+const CACHE_DURATION = 5 * 60 * 1000;
+
+let reposCache: { data: Repository[]; timestamp: number } | null = null;
+let inflightRequest: Promise<Repository[]> | null = null;
+
+/** Error thrown by the client; `code` mirrors the Worker's error code when available. */
+export class RepositoryApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string
+  ) {
+    super(message);
+    this.name = 'RepositoryApiError';
+  }
 }
 
-/**
- * Validate repository object
- */
-function isValidRepository(repo: any): boolean {
-  return Boolean(
-    repo &&
-    typeof repo === 'object' &&
-    repo.id &&
-    repo.name &&
-    repo.full_name &&
-    repo.html_url
+function isRepositoriesResponse(value: unknown): value is RepositoriesResponse {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Array.isArray((value as { repos?: unknown }).repos)
   );
 }
 
-/**
- * Fetch repositories from GitHub API with pagination
- */
-async function fetchGitHubRepos(
-  page: number = 1,
-  per_page: number = 100,
-  token?: string
-): Promise<{ repos: Repository[]; rate_limit: { limit: number; remaining: number; reset: number } }> {
-  const url = new URL(`${GITHUB_API_BASE}/orgs/${ORG_NAME}/repos`);
-  url.searchParams.append('page', page.toString());
-  url.searchParams.append('per_page', per_page.toString());
-  url.searchParams.append('type', 'all'); // Include all types (owner, member, etc.)
-  url.searchParams.append('sort', 'updated');
-  url.searchParams.append('direction', 'desc');
-
-  const headers: Record<string, string> = {
-    'User-Agent': USER_AGENT,
-    'Accept': 'application/vnd.github+json',
-  };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
+async function readErrorMessage(response: Response): Promise<ApiError | null> {
   try {
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      headers,
-      // Cloudflare Workers has a default timeout, but we set one for browser
-      ...(typeof fetch === 'function' && !('request' in fetch) && { signal: AbortSignal.timeout(30000) }),
+    const body: unknown = await response.json();
+    if (typeof body === 'object' && body !== null && 'error' in body) {
+      return body as ApiError;
+    }
+  } catch {
+    // Non-JSON error body; fall back to the generic message below.
+  }
+  return null;
+}
+
+async function fetchRepositoriesFromApi(): Promise<Repository[]> {
+  let response: Response;
+  try {
+    response = await fetch(REPOS_ENDPOINT, {
+      headers: { Accept: 'application/json' },
+      signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal
+        ? AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+        : undefined,
     });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw {
-        status: response.status,
-        message: errorData.message || `GitHub API returned ${response.status}`,
-      };
-    }
-
-    const rate_limit = {
-      limit: parseInt(response.headers.get('x-ratelimit-limit') || '0'),
-      remaining: parseInt(response.headers.get('x-ratelimit-remaining') || '0'),
-      reset: parseInt(response.headers.get('x-ratelimit-reset') || '0'),
-    };
-
-    const data = await response.json();
-    
-    if (!Array.isArray(data)) {
-      throw { status: 500, message: 'Invalid response format from GitHub API' };
-    }
-
-    const repos = data
-      .filter(isValidRepository)
-      .map(normalizeRepository)
-      .filter(repo => !repo.archived); // Exclude archived by default
-
-    return { repos, rate_limit };
-  } catch (error) {
-    if (error instanceof Error) {
-      throw { status: 500, message: error.message };
-    }
-    throw error;
+  } catch {
+    throw new RepositoryApiError('Could not load repositories. Check your connection and try again.', 0, 'NETWORK_ERROR');
   }
+
+  if (!response.ok) {
+    const apiError = await readErrorMessage(response);
+    throw new RepositoryApiError(
+      apiError?.message || `Failed to load repositories (HTTP ${response.status}).`,
+      response.status,
+      apiError?.error || 'HTTP_ERROR'
+    );
+  }
+
+  const body: unknown = await response.json().catch(() => null);
+  if (!isRepositoriesResponse(body)) {
+    throw new RepositoryApiError('The repository service returned an invalid response.', response.status, 'INVALID_RESPONSE');
+  }
+
+  // Defense in depth: re-sanitize every item before it reaches the UI.
+  return body.repos
+    .map(sanitizeRepository)
+    .filter((repo): repo is Repository => repo !== null);
 }
 
 /**
- * Fetch all repositories with pagination
+ * Get public repositories of the organization (includes forks and archived repos;
+ * the UI decides what to show). Uses a 5-minute in-memory cache.
  */
-async function fetchAllRepos(token?: string): Promise<Repository[]> {
-  const allRepos: Repository[] = [];
-  let page = 1;
-  let hasMore = true;
-  const per_page = 100;
-
-  while (hasMore) {
-    try {
-      const { repos, rate_limit } = await fetchGitHubRepos(page, per_page, token);
-      
-      if (repos.length === 0) {
-        hasMore = false;
-        break;
-      }
-
-      allRepos.push(...repos);
-      
-      // Check if we've fetched all repos or hit rate limit
-      if (repos.length < per_page || rate_limit.remaining <= 1) {
-        hasMore = false;
-      } else {
-        page++;
-      }
-    } catch (error) {
-      // If we have some repos, return them; otherwise rethrow
-      if (allRepos.length > 0) {
-        console.warn('Partial fetch completed, returning available repos');
-        hasMore = false;
-      } else {
-        throw error;
-      }
-    }
+export async function getRepositories(forceRefresh: boolean = false): Promise<Repository[]> {
+  if (!forceRefresh && reposCache && Date.now() - reposCache.timestamp < CACHE_DURATION) {
+    return reposCache.data;
   }
 
-  return allRepos;
+  if (!inflightRequest) {
+    inflightRequest = fetchRepositoriesFromApi()
+      .then((data) => {
+        reposCache = { data, timestamp: Date.now() };
+        return data;
+      })
+      .finally(() => {
+        inflightRequest = null;
+      });
+  }
+
+  return inflightRequest;
 }
 
 /**
- * Get repositories with caching
+ * Get organization statistics computed from real repository data.
  */
-export async function getRepositories(
-  forceRefresh: boolean = false,
-  token?: string
-): Promise<Repository[]> {
-  // Return cached data if available and not expired
-  if (!forceRefresh && reposCache) {
-    const now = Date.now();
-    if (now - reposCache.timestamp < CACHE_DURATION) {
-      return reposCache.data;
-    }
-  }
+export async function getOrganizationStats(): Promise<OrganizationStats> {
+  const repos = await getRepositories(false);
+  const nonForkRepos = repos.filter((repo) => !repo.fork);
 
-  const repos = await fetchAllRepos(token);
-  
-  // Update cache
-  reposCache = {
-    data: repos,
-    timestamp: Date.now(),
-  };
-
-  return repos;
-}
-
-/**
- * Get organization statistics
- */
-export async function getOrganizationStats(token?: string): Promise<{
-  total_repos: number;
-  total_stars: number;
-  total_forks: number;
-  languages: Record<string, number>;
-}> {
-  const repos = await getRepositories(false, token);
-  
-  const total_repos = repos.length;
-  const total_stars = repos.reduce((sum, repo) => sum + repo.stargazers_count, 0);
-  const total_forks = repos.reduce((sum, repo) => sum + repo.forks_count, 0);
-  
   const languages: Record<string, number> = {};
-  repos.forEach(repo => {
+  repos.forEach((repo) => {
     if (repo.language) {
       languages[repo.language] = (languages[repo.language] || 0) + 1;
     }
   });
 
-  return { total_repos, total_stars, total_forks, languages };
+  const mostStarred = nonForkRepos.reduce<Repository | null>(
+    (best, repo) => (best === null || repo.stargazers_count > best.stargazers_count ? repo : best),
+    null
+  );
+  const recentlyUpdated = nonForkRepos.reduce<Repository | null>(
+    (best, repo) =>
+      best === null || Date.parse(repo.updated_at) > Date.parse(best.updated_at) ? repo : best,
+    null
+  );
+
+  return {
+    total_repos: repos.length,
+    total_stars: repos.reduce((sum, repo) => sum + repo.stargazers_count, 0),
+    total_forks: repos.reduce((sum, repo) => sum + repo.forks_count, 0),
+    languages,
+    most_starred: mostStarred,
+    recently_updated: recentlyUpdated,
+  };
 }
 
 /**
- * Get featured project (Aurelia Browser if exists)
+ * Featured project: the ankworks/browser repository (Aurelia Browser) only when it
+ * actually exists in the organization. Otherwise the most-starred public, non-fork repository.
  */
-export async function getFeaturedProject(token?: string): Promise<Repository | null> {
-  const repos = await getRepositories(false, token);
-  
-  // Look for ankworks/browser repository
-  const browserRepo = repos.find(repo => repo.name.toLowerCase() === 'browser');
+export async function getFeaturedProject(): Promise<Repository | null> {
+  const repos = await getRepositories(false);
+
+  const browserRepo = repos.find((repo) => repo.full_name.toLowerCase() === 'ankworks/browser');
   if (browserRepo) {
     return browserRepo;
   }
-  
-  // If browser doesn't exist, return the most starred non-fork repository
-  const nonForkRepos = repos.filter(repo => !repo.fork);
-  if (nonForkRepos.length > 0) {
-    return nonForkRepos.reduce((prev, current) => 
-      (prev.stargazers_count > current.stargazers_count) ? prev : current
-    );
-  }
-  
-  return null;
+
+  const candidates = repos.filter((repo) => !repo.fork && !repo.archived);
+  if (candidates.length === 0) return null;
+  return candidates.reduce((prev, current) =>
+    prev.stargazers_count >= current.stargazers_count ? prev : current
+  );
 }
 
-/**
- * Get repository by name
- */
-export async function getRepositoryByName(name: string, token?: string): Promise<Repository | null> {
-  const repos = await getRepositories(false, token);
-  return repos.find(repo => repo.name.toLowerCase() === name.toLowerCase()) || null;
+/** Find a repository by name (case-insensitive). */
+export async function getRepositoryByName(name: string): Promise<Repository | null> {
+  const repos = await getRepositories(false);
+  const target = name.toLowerCase();
+  return repos.find((repo) => repo.name.toLowerCase() === target) ?? null;
 }
 
-/**
- * Invalidate cache
- */
+/** Drop the client cache so the next call refetches from the Worker. */
 export function invalidateCache(): void {
   reposCache = null;
 }
 
-/**
- * Get cache status
- */
+/** Expose cache state (used for diagnostics and tests). */
 export function getCacheStatus(): { cached: boolean; timestamp: number | null } {
   return {
     cached: reposCache !== null,
-    timestamp: reposCache?.timestamp || null,
+    timestamp: reposCache?.timestamp ?? null,
   };
 }
 
-// Export for testing
-export { normalizeRepository, isValidRepository, CACHE_DURATION };
+export { CACHE_DURATION };
