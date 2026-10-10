@@ -1,8 +1,8 @@
 import { Link, useSearchParams } from 'react-router-dom';
 import type { CollaborationState, IssueSummary } from '../../types/collaboration';
-import { issueListPath, issuePath } from '../../shared/routes';
+import { issueListPath, issuePath, newIssuePath } from '../../shared/routes';
 import { formatDate, formatExactCount, formatRelative } from '../../lib/format';
-import { CommentIcon, IssueIcon } from '../explorer/icons';
+import { CommentIcon, IssueIcon, PlusIcon } from '../explorer/icons';
 import { Badge, EmptyState, ErrorState, Panel, SkeletonRows } from '../explorer/ui';
 import { useAsync } from '../../hooks/useAsync';
 import { explorerApi } from '../../api/explorer';
@@ -17,7 +17,7 @@ export function IssueStatus({ state }: { state: 'open' | 'closed' }) {
   return state === 'open' ? <Badge tone="accent">Open</Badge> : <Badge tone="warning">Closed</Badge>;
 }
 
-export default function IssueList({ repo }: { repo: string | null }) {
+export default function IssueList({ repo, issuesEnabled = true }: { repo: string | null; issuesEnabled?: boolean }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const state = validCollaborationState(searchParams.get('state'));
   const pageValue = Number(searchParams.get('page') ?? '1');
@@ -39,7 +39,28 @@ export default function IssueList({ repo }: { repo: string | null }) {
           <h2 className="text-base font-semibold text-text">Issues</h2>
           <p className="mt-1 text-xs text-muted">{repo ? 'This public repository' : 'Across public AnkWorks repositories'}</p>
         </div>
-        <StateFilter value={state} onChange={setState} label="Filter issues by state" />
+        <div className="flex flex-wrap items-center gap-2">
+          {repo && issuesEnabled ? (
+            <Link
+              to={newIssuePath(repo)}
+              data-testid="new-issue-link"
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+            >
+              <PlusIcon size={14} />
+              New issue
+            </Link>
+          ) : !repo ? (
+            <a
+              href="#new-issue"
+              data-testid="new-issue-link"
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+            >
+              <PlusIcon size={14} />
+              New issue
+            </a>
+          ) : null}
+          <StateFilter value={state} onChange={setState} label="Filter issues by state" />
+        </div>
       </div>
 
       {invalidPage ? (

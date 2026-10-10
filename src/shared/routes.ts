@@ -66,6 +66,11 @@ export function issuePath(repo: string, number: number): string {
   return `${repoPath(repo)}/issues/${number}`;
 }
 
+/** Authenticated issue composer for one repository. */
+export function newIssuePath(repo: string): string {
+  return `${repoPath(repo)}/issues/new`;
+}
+
 export function pullRequestListPath(repo?: string, state = 'open', page = 1): string {
   const base = repo ? `${repoPath(repo)}/pulls` : '/pulls';
   return appendListQuery(base, state, page);

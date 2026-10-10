@@ -55,6 +55,26 @@ async function readRequestBody(request: Request): Promise<Record<string, unknown
   }
 }
 
+/**
+ * Base64 of a UTF-8 string, encoded byte by byte.
+ *
+ * `btoa(String.fromCharCode(...bytes))` turns every byte into a call argument, so
+ * it throws `RangeError: Maximum call stack size exceeded` once the file is large
+ * enough — measured at 150 000 bytes under Node 22 (the exact threshold depends
+ * on the runtime's remaining stack, which is why it is not a fixed number).
+ * COMMIT_MAX_BYTES is 400 000, so a valid request could hit it and fail with an
+ * opaque 500 instead of reaching GitHub. The loop has no argument limit and no
+ * stack dependency.
+ */
+function toBase64Utf8(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+  return btoa(binary);
+}
+
 /** Map GitHub's 422/409 from contents writes to stable codes. */
 function mapWriteFailure(status: number, body: unknown): UpstreamError {
   const message = (body as { message?: string } | null)?.message ?? '';
@@ -102,7 +122,7 @@ async function handleCommit(repo: string, request: Request, env: Env): Promise<R
 
   const payload: Record<string, unknown> = {
     message: message.message,
-    content: btoa(String.fromCharCode(...new TextEncoder().encode(content.content))),
+    content: toBase64Utf8(content.content),
     branch: branch.name,
   };
   if (typeof sha === 'string') payload.sha = sha;

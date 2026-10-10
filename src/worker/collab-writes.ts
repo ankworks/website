@@ -126,7 +126,17 @@ async function upstreamWrite(
 
 function mapUpstreamFailure(status: number, data: unknown): UpstreamError {
   const message = (data as { message?: string } | null)?.message ?? '';
+  if (status === 401) return new UpstreamError(401, 'UNAUTHENTICATED', 'GitHub rejected your session. Sign in again.');
+  if (status === 403) {
+    return new UpstreamError(403, 'FORBIDDEN', message || 'GitHub refused this action for your account.');
+  }
   if (status === 404) return new UpstreamError(404, 'NOT_FOUND', 'The target no longer exists.');
+  // GitHub answers 410 when the feature is switched off for the repository
+  // (issues disabled, comments locked). Reporting "GitHub is unavailable" here
+  // sends the user chasing an outage that does not exist.
+  if (status === 410) {
+    return new UpstreamError(410, 'FEATURE_DISABLED', message || 'That feature is disabled for this repository.');
+  }
   if (status === 422) return new UpstreamError(422, 'WRITE_REJECTED', message || 'GitHub rejected the request.');
   if (status === 405) return new UpstreamError(405, 'METHOD_NOT_ALLOWED', 'This action is not allowed here.');
   return new UpstreamError(502, 'GITHUB_UNAVAILABLE', 'GitHub is unavailable right now.');

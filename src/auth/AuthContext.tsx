@@ -8,6 +8,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { authApi } from '../api/auth';
+import { clearRepoPermissionsCache } from '../lib/repo-permissions-cache';
 import type { AuthUser } from '../types/auth';
 
 export interface AuthState {
@@ -36,6 +37,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ ...ANONYMOUS, status: 'loading' });
 
   const refresh = useCallback(async () => {
+    // Permission answers belong to a session: drop them before re-reading it so
+    // a sign-in or sign-out can never be served another user's cached rights.
+    clearRepoPermissionsCache();
     try {
       const session = await authApi.session();
       setState({

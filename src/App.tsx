@@ -13,6 +13,7 @@ const BlobPage = lazy(() => import("./pages/BlobPage"));
 const CommitsPage = lazy(() => import("./pages/CommitsPage"));
 const BranchesPage = lazy(() => import("./pages/BranchesPage"));
 const IssuesPage = lazy(() => import("./pages/IssuesPage"));
+const NewIssuePage = lazy(() => import("./pages/NewIssuePage"));
 const IssueDetailPage = lazy(() => import("./pages/IssueDetailPage"));
 const PullRequestsPage = lazy(() => import("./pages/PullRequestsPage"));
 const PullRequestDetailPage = lazy(
@@ -70,6 +71,14 @@ export default function App() {
             element={
               <LazyPage>
                 <IssuesPage />
+              </LazyPage>
+            }
+          />
+          <Route
+            path="repos/:repo/issues/new"
+            element={
+              <LazyPage>
+                <NewIssuePage />
               </LazyPage>
             }
           />

@@ -144,14 +144,20 @@ export function GuestIssueForm() {
     return <Panel aria-label="Guest issue form" className="p-4"><p className="text-sm text-muted">Loading the submission form…</p></Panel>;
   }
   if (!config.enabled) {
+    // Deliberately low emphasis: this is the fallback path, and when it is off
+    // the page should point at the authenticated composer instead of a dead end.
     return (
-      <Panel aria-label="Guest issue form" className="p-4">
-        <p className="text-sm font-medium text-text">Guest submissions are disabled</p>
-        <p className="mt-1 text-xs leading-5 text-muted">
-          This deployment has not enabled guest issue submission (it needs the D1 binding and the Turnstile secret). Sign
-          in with GitHub to open issues directly.
-        </p>
-      </Panel>
+      <p
+        data-testid="guest-form-disabled"
+        className="rounded-md border border-border/60 bg-elevated/20 px-3 py-2 text-xs leading-5 text-muted"
+      >
+        <span className="font-medium text-text">Guest submissions are disabled</span> on this deployment (it needs the D1
+        binding and the Turnstile secret), so the review queue is off.{' '}
+        <a href="/api/auth/login" className="text-primary underline-offset-2 hover:underline">
+          Sign in with GitHub
+        </a>{' '}
+        to open an issue directly.
+      </p>
     );
   }
 

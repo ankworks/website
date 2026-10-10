@@ -135,6 +135,32 @@ describe('changes routes', () => {
       expect((result.commit as Record<string, string>).sha).toBe('a'.repeat(40));
     });
 
+    it('commits a large multi-byte payload byte-for-byte', async () => {
+      // 372 000 UTF-8 bytes: inside COMMIT_MAX_BYTES (400 000) but far past the
+      // point where a spread-based encoder (`btoa(String.fromCharCode(...bytes))`)
+      // starts throwing RangeError in a shallow stack — measured at 150 000 bytes
+      // under Node 22. The multi-byte characters also prove the payload survives
+      // the base64 round trip as valid UTF-8.
+      const content = `${'héllo wörld — AnkWorks ✓\n'.repeat(12_000)}`;
+      expect(new TextEncoder().encode(content).byteLength).toBeGreaterThan(200_000);
+
+      let seenContent = '';
+      stubFetch((url, init) => {
+        if (url.pathname === '/repos/ankworks/website') return json({ permissions: { push: true } });
+        if (url.pathname === '/repos/ankworks/website/contents/docs/guide.md') {
+          const body = JSON.parse(String(init?.body)) as Record<string, string>;
+          seenContent = Buffer.from(body.content, 'base64').toString('utf8');
+          return json({ commit: { sha: 'a'.repeat(40), html_url: '' }, content: { sha: 'b'.repeat(40), path: 'docs/guide.md' } });
+        }
+        return json({}, 500);
+      });
+
+      const cookie = await sessionCookie();
+      const response = await handleApiRequest(commitRequest({ ...BODY, content }, cookie), env());
+      expect(response.status).toBe(200);
+      expect(seenContent).toBe(content);
+    });
+
     it('validates message, branch, path, and sha before any upstream call', async () => {
       const cookie = await sessionCookie();
       const cases = [
