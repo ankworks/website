@@ -74,7 +74,7 @@ export async function resolveCommit(env: Env, repo: string, ref: string): Promis
   });
   const commit = sanitizeCommit(await readJson(response), repo);
   if (!commit) {
-    throw new UpstreamError(502, 'INVALID_UPSTREAM_RESPONSE', 'GitHub API returned an unexpected response format.');
+    throw new UpstreamError(502, 'GITHUB_RESPONSE_INVALID', 'GitHub API returned an unexpected response format.');
   }
   return commit;
 }
@@ -144,7 +144,7 @@ async function fetchContentsObject(env: Env, repo: string, path: string, commitS
   }
   const object = sanitizeContentsObject(payload);
   if (!object) {
-    throw new UpstreamError(502, 'INVALID_UPSTREAM_RESPONSE', 'GitHub API returned an unexpected response format.');
+    throw new UpstreamError(502, 'GITHUB_RESPONSE_INVALID', 'GitHub API returned an unexpected response format.');
   }
   return object;
 }
@@ -154,7 +154,7 @@ function decodeBase64(value: string): Uint8Array {
   try {
     binary = atob(value.replace(/\s/g, ''));
   } catch {
-    throw new UpstreamError(502, 'INVALID_UPSTREAM_RESPONSE', 'GitHub API returned invalid file content.');
+    throw new UpstreamError(502, 'GITHUB_RESPONSE_INVALID', 'GitHub API returned invalid file content.');
   }
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) {
