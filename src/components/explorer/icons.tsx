@@ -86,6 +86,13 @@ export const ForkIcon = (props: IconProps) => (
   </Svg>
 );
 
+export const WrapIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M2 4h12M2 8h9a2.5 2.5 0 0 1 0 5H9M2 12h4" />
+    <path d="M12 10.5 14 12.5 12 14.5" />
+  </Svg>
+);
+
 export const CopyIcon = (props: IconProps) => (
   <Svg {...props}>
     <rect x="5.5" y="5.5" width="8" height="8" rx="1" />

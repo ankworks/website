@@ -11,6 +11,15 @@
   --forge-text: 230 237 243;
   --forge-muted: 139 148 158;
   --forge-border: 48 54 61;
+
+  /* GitHub-style alert accents. Distinct hues that keep AA contrast on both
+     themes; the callout text itself always uses the normal text colour. */
+  --forge-alert-note: 88 166 255;
+  --forge-alert-tip: 63 185 80;
+  --forge-alert-important: 163 113 247;
+  --forge-alert-warning: 210 153 34;
+  --forge-alert-caution: 248 81 73;
+  --forge-alert-surface-alpha: 0.08;
 }
 
 :root[data-theme='light'] {
@@ -22,6 +31,13 @@
   --forge-text: 31 35 40;
   --forge-muted: 89 99 110;
   --forge-border: 208 215 222;
+
+  --forge-alert-note: 9 105 218;
+  --forge-alert-tip: 26 127 55;
+  --forge-alert-important: 130 80 223;
+  --forge-alert-warning: 154 103 0;
+  --forge-alert-caution: 207 34 46;
+  --forge-alert-surface-alpha: 0.06;
 }
 
 @layer base {
@@ -87,97 +103,184 @@ tr.code-line:target {
   margin-top: 0;
 }
 
-.markdown-body .markdown-heading {
-  @apply mb-4 mt-8 scroll-mt-20 font-semibold tracking-tight text-text;
-}
-
-.markdown-body h1,
-.markdown-body h2 {
-  @apply border-b border-border pb-2 text-2xl;
-}
-
-.markdown-body h3 {
-  @apply text-xl;
-}
-
-.markdown-body h4,
-.markdown-body h5,
-.markdown-body h6 {
-  @apply text-base text-muted;
-}
-
-.markdown-body p,
-.markdown-body ul,
-.markdown-body ol,
-.markdown-body blockquote,
-.markdown-body table,
-.markdown-body pre {
-  @apply mb-4;
-}
-
-.markdown-body ul {
-  @apply list-disc pl-6;
-}
-
-.markdown-body ol {
-  @apply list-decimal pl-6;
-}
-
-.markdown-body li + li {
-  @apply mt-1;
-}
-
-.markdown-body li > ul,
-.markdown-body li > ol {
-  @apply mb-0 mt-1;
-}
-
-.markdown-body a {
-  @apply text-primary underline-offset-2 hover:underline;
-}
-
-.markdown-body code {
-  @apply rounded bg-elevated px-1.5 py-0.5 font-mono text-[85%] text-text;
-}
-
-.markdown-body .markdown-pre {
-  @apply overflow-x-auto rounded-md border border-border bg-background p-4 font-mono text-[13px] leading-6;
-}
-
-.markdown-body .markdown-pre code {
-  @apply bg-transparent p-0 text-[13px];
-}
-
-.markdown-body blockquote {
-  @apply border-l-4 border-border pl-4 text-muted;
-}
-
-.markdown-body hr {
-  @apply my-6 border-border;
-}
-
-.markdown-body table {
-  @apply w-full border-collapse text-sm;
-}
-
-.markdown-body th,
-.markdown-body td {
-  @apply border border-border px-3 py-1.5 text-left align-top;
-}
-
-.markdown-body th {
-  @apply bg-elevated font-medium;
-}
-
-.markdown-body tr:nth-child(2n) td {
-  @apply bg-surface/60;
-}
-
 .markdown-body img {
   @apply max-w-full;
 }
 
-/* Sanitized HTML subset: details/summary, kbd, marks, and deletions. */
+/* ---------------------------------------------------------------------------
+   GitHub-style alerts (> [!NOTE] …). The marker is removed by remark-alerts;
+   only the data attributes survive sanitization, so a document cannot inject
+   arbitrary classes.
+   --------------------------------------------------------------------------- */
+.markdown-body [data-alert] {
+  @apply mb-4 rounded-md border border-l-4 px-4 py-3;
+  border-left-color: rgb(var(--forge-alert-note));
+  border-top-color: rgb(var(--forge-border));
+  border-right-color: rgb(var(--forge-border));
+  border-bottom-color: rgb(var(--forge-border));
+  background-color: rgb(var(--forge-alert-note) / var(--forge-alert-surface-alpha));
+}
+
+.markdown-body [data-alert='NOTE'] { border-left-color: rgb(var(--forge-alert-note)); background-color: rgb(var(--forge-alert-note) / var(--forge-alert-surface-alpha)); }
+.markdown-body [data-alert='TIP'] { border-left-color: rgb(var(--forge-alert-tip)); background-color: rgb(var(--forge-alert-tip) / var(--forge-alert-surface-alpha)); }
+.markdown-body [data-alert='IMPORTANT'] { border-left-color: rgb(var(--forge-alert-important)); background-color: rgb(var(--forge-alert-important) / var(--forge-alert-surface-alpha)); }
+.markdown-body [data-alert='WARNING'] { border-left-color: rgb(var(--forge-alert-warning)); background-color: rgb(var(--forge-alert-warning) / var(--forge-alert-surface-alpha)); }
+.markdown-body [data-alert='CAUTION'] { border-left-color: rgb(var(--forge-alert-caution)); background-color: rgb(var(--forge-alert-caution) / var(--forge-alert-surface-alpha)); }
+
+.markdown-body [data-alert] > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body [data-alert-title] {
+  @apply mb-1 flex items-center gap-2 text-sm font-semibold;
+  color: rgb(var(--forge-alert-note));
+}
+
+.markdown-body [data-alert='NOTE'] > [data-alert-title] { color: rgb(var(--forge-alert-note)); }
+.markdown-body [data-alert='TIP'] > [data-alert-title] { color: rgb(var(--forge-alert-tip)); }
+.markdown-body [data-alert='IMPORTANT'] > [data-alert-title] { color: rgb(var(--forge-alert-important)); }
+.markdown-body [data-alert='WARNING'] > [data-alert-title] { color: rgb(var(--forge-alert-warning)); }
+.markdown-body [data-alert='CAUTION'] > [data-alert-title] { color: rgb(var(--forge-alert-caution)); }
+
+/* Icon: a small filled badge with a distinct glyph per alert type. Rendered
+   with CSS so no document-controlled markup is involved. */
+.markdown-body [data-alert-title]::before {
+  content: 'i';
+  @apply inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold leading-none text-white;
+  background-color: rgb(var(--forge-alert-note));
+}
+
+.markdown-body [data-alert='NOTE'] > [data-alert-title]::before { content: 'i'; background-color: rgb(var(--forge-alert-note)); }
+.markdown-body [data-alert='TIP'] > [data-alert-title]::before { content: '\2713'; background-color: rgb(var(--forge-alert-tip)); }
+.markdown-body [data-alert='IMPORTANT'] > [data-alert-title]::before { content: '!'; background-color: rgb(var(--forge-alert-important)); }
+.markdown-body [data-alert='WARNING'] > [data-alert-title]::before { content: '\25B2'; background-color: rgb(var(--forge-alert-warning)); font-size: 8px; }
+.markdown-body [data-alert='CAUTION'] > [data-alert-title]::before { content: '\2715'; background-color: rgb(var(--forge-alert-caution)); font-size: 9px; }
+
+/* ---------------------------------------------------------------------------
+   Headings, anchors, and typography scale
+   --------------------------------------------------------------------------- */
+.markdown-body .markdown-heading {
+  @apply relative mb-3 mt-8 scroll-mt-24 font-semibold leading-snug tracking-tight text-text;
+}
+
+.markdown-body > .markdown-heading:first-child,
+.markdown-body > *:first-child .markdown-heading:first-child {
+  @apply mt-0;
+}
+
+.markdown-body h1.markdown-heading {
+  @apply border-b border-border pb-2 text-[1.75rem] leading-tight;
+}
+
+.markdown-body h2.markdown-heading {
+  @apply border-b border-border pb-2 text-[1.375rem] leading-snug;
+}
+
+.markdown-body h3.markdown-heading {
+  @apply text-[1.125rem];
+}
+
+.markdown-body h4.markdown-heading {
+  @apply text-base;
+}
+
+.markdown-body h5.markdown-heading,
+.markdown-body h6.markdown-heading {
+  @apply text-sm uppercase tracking-wide text-muted;
+}
+
+.markdown-body .markdown-heading-anchor {
+  @apply ml-2 text-muted opacity-0 no-underline transition-opacity;
+}
+
+.markdown-body .markdown-heading:hover .markdown-heading-anchor,
+.markdown-body .markdown-heading-anchor:focus-visible {
+  @apply opacity-100;
+}
+
+/* ---------------------------------------------------------------------------
+   Blockquotes, rules, inline code
+   --------------------------------------------------------------------------- */
+.markdown-body .markdown-blockquote {
+  @apply mb-4 border-l-4 border-border pl-4 text-muted;
+}
+
+.markdown-body .markdown-blockquote > :last-child {
+  @apply mb-0;
+}
+
+.markdown-body .markdown-hr {
+  @apply my-6 border-0 border-t border-border;
+}
+
+.markdown-body .markdown-inline-code {
+  @apply rounded border border-border/60 bg-elevated px-1.5 py-0.5 font-mono text-[0.85em] text-text;
+}
+
+/* ---------------------------------------------------------------------------
+   Tables: clear borders, readable padding, alternating rows, mobile scroll
+   --------------------------------------------------------------------------- */
+.markdown-body .markdown-table-wrap {
+  @apply rounded-md border border-border;
+}
+
+.markdown-body .markdown-table {
+  @apply w-full border-collapse text-sm;
+}
+
+.markdown-body .markdown-th {
+  @apply border-b border-border bg-elevated px-3 py-2 text-left align-top font-semibold text-text;
+}
+
+.markdown-body .markdown-td {
+  @apply border-b border-border px-3 py-2 align-top;
+}
+
+.markdown-body .markdown-table tbody tr:nth-child(even) .markdown-td {
+  @apply bg-surface/70;
+}
+
+.markdown-body .markdown-table tbody tr:last-child .markdown-td {
+  @apply border-b-0;
+}
+
+/* ---------------------------------------------------------------------------
+   Task lists: inert checkboxes, no GitHub writes
+   --------------------------------------------------------------------------- */
+.markdown-body li.markdown-task-item {
+  @apply list-none;
+}
+
+.markdown-body li.markdown-task-item > input.markdown-task-checkbox:first-child {
+  @apply mr-2 -ml-5 align-middle;
+}
+
+.markdown-body .markdown-task-checkbox {
+  @apply h-3.5 w-3.5 cursor-not-allowed rounded border-border align-middle accent-primary;
+}
+
+/* ---------------------------------------------------------------------------
+   Code blocks
+   --------------------------------------------------------------------------- */
+.markdown-body .markdown-code-block {
+  @apply overflow-hidden rounded-md border border-border bg-background;
+}
+
+.markdown-body .markdown-code-block figcaption {
+  @apply flex items-center justify-between gap-2 border-b border-border bg-elevated/70 px-3 py-1.5;
+}
+
+.markdown-body .markdown-pre[data-wrap='on'] {
+  @apply whitespace-pre-wrap break-words;
+}
+
+.markdown-body .markdown-pre[data-wrap='off'] {
+  @apply whitespace-pre;
+}
+
+/* ---------------------------------------------------------------------------
+   Sanitized HTML subset: details/summary, kbd, marks, and deletions.
+   --------------------------------------------------------------------------- */
 .markdown-body details {
   @apply mb-4 rounded-md border border-border bg-elevated/30 px-4 py-3;
 }
@@ -197,6 +300,7 @@ tr.code-line:target {
 .markdown-body mark {
   @apply bg-primary/20 px-0.5 text-text;
 }
+
 
 .markdown-body del {
   @apply text-muted line-through;

@@ -116,6 +116,63 @@ export function detectLanguage(path: string): LanguageInfo {
   return BY_EXTENSION[name.slice(dot + 1)] ?? PLAIN;
 }
 
+/** Display label for a code fence tag ("ts" → "TypeScript", "sh" → "Shell"). */
+const FENCE_LABELS: Record<string, string> = {
+  js: 'JavaScript',
+  javascript: 'JavaScript',
+  jsx: 'JavaScript',
+  ts: 'TypeScript',
+  typescript: 'TypeScript',
+  tsx: 'TypeScript',
+  json: 'JSON',
+  css: 'CSS',
+  scss: 'SCSS',
+  html: 'HTML',
+  xml: 'XML',
+  svg: 'SVG',
+  md: 'Markdown',
+  markdown: 'Markdown',
+  sh: 'Shell',
+  bash: 'Shell',
+  shell: 'Shell',
+  zsh: 'Shell',
+  py: 'Python',
+  python: 'Python',
+  go: 'Go',
+  rust: 'Rust',
+  rs: 'Rust',
+  java: 'Java',
+  kotlin: 'Kotlin',
+  swift: 'Swift',
+  ruby: 'Ruby',
+  rb: 'Ruby',
+  php: 'PHP',
+  c: 'C',
+  cpp: 'C++',
+  'c++': 'C++',
+  csharp: 'C#',
+  cs: 'C#',
+  sql: 'SQL',
+  yaml: 'YAML',
+  yml: 'YAML',
+  toml: 'TOML',
+  ini: 'INI',
+  diff: 'Diff',
+  patch: 'Diff',
+  dockerfile: 'Dockerfile',
+  makefile: 'Makefile',
+  mermaid: 'Mermaid',
+  text: 'Text',
+  plaintext: 'Text',
+};
+
+/** Human-readable label for a fence tag. Falls back to the tag itself. */
+export function languageLabel(tag: string | undefined): string | null {
+  if (!tag) return null;
+  const key = tag.toLowerCase();
+  return FENCE_LABELS[key] ?? (FENCE_ALIASES[key] ? key : null);
+}
+
 /** Map a markdown code-fence language tag to a registered grammar, or null. */
 export function grammarForFenceTag(tag: string | undefined): string | null {
   if (!tag) return null;
