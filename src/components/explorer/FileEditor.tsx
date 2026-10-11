@@ -55,7 +55,7 @@ interface Gate {
 }
 
 export default function FileEditor({ fileName, initialContent, context, onDirtyChange, target, preview = true }: FileEditorProps) {
-  const { status } = useAuth();
+  const { status, isMember, membershipMessage } = useAuth();
   const permissions = useRepoPermissions(target?.repo ?? null);
   const [baseline, setBaseline] = useState(initialContent);
   const [draft, setDraft] = useState(initialContent);
@@ -84,12 +84,14 @@ export default function FileEditor({ fileName, initialContent, context, onDirtyC
   const gate = useMemo<Gate>(() => {
     if (status === 'loading') return { ok: false, title: 'Checking your sign-in status…' };
     if (status !== 'authenticated') return { ok: false, title: 'Committing to GitHub requires sign-in.' };
+    // V3-B: only verified AnkWorks members may write through Forge.
+    if (!isMember) return { ok: false, title: membershipMessage };
     if (!target) return { ok: false, title: 'This file has no commit target.' };
     if (permissions.error) return { ok: false, title: permissions.error };
     if (!permissions.loaded) return { ok: false, title: 'Checking repository permissions…' };
     if (!permissions.canWrite) return { ok: false, title: `Committing requires write access to ${ORG_NAME}/${target.repo}.` };
     return { ok: true, title: '' };
-  }, [status, target, permissions]);
+  }, [status, isMember, membershipMessage, target, permissions]);
 
   const discard = useCallback(() => {
     if (!window.confirm(`Discard the unsaved draft changes to ${fileName}?`)) return;

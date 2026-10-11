@@ -23,6 +23,8 @@ import type { Env } from './env';
 import { UpstreamError, errorResponse, jsonResponse } from './github-client';
 import { logEvent } from './logging';
 import { requireRepo } from './params';
+import { authorizeWrite, type RepoNeed } from './authorization';
+import { isSameOrigin } from './http';
 
 const API = 'https://api.github.com';
 const TITLE_MAX = 300;
@@ -57,30 +59,15 @@ function invalid(code: string, message: string): Response {
   return errorResponse(400, code, message);
 }
 
-/** Minimum permission required for an action. */
-type Need = 'read' | 'triage' | 'write';
-
-async function authorize(session: SessionPayload, repo: string, need: Need): Promise<void> {
-  const response = await fetch(`${API}/repos/${ORG_NAME}/${repo}`, {
-    method: 'GET',
-    redirect: 'manual',
-    headers: apiHeaders(session.token),
-  });
-  if (response.status === 404) {
-    throw new UpstreamError(404, 'REPOSITORY_NOT_FOUND', 'Repository not found or not visible to you.');
-  }
-  if (!response.ok) throw new UpstreamError(502, 'GITHUB_AUTH_UNAVAILABLE', 'Could not verify repository permissions.');
-  const data = (await response.json()) as { permissions?: Record<string, unknown> };
-  const permissions = data.permissions ?? {};
-  const ok =
-    need === 'read'
-      ? permissions.pull === true || permissions.push === true || permissions.admin === true
-      : need === 'triage'
-        ? permissions.triage === true || permissions.push === true || permissions.maintain === true || permissions.admin === true
-        : permissions.push === true || permissions.maintain === true || permissions.admin === true;
-  if (!ok) {
-    throw new UpstreamError(403, 'FORBIDDEN', `You need ${need} access on this repository for that action.`);
-  }
+/**
+ * V3-B authorization for collaboration writes.
+ *
+ * Every route states the minimum repository permission it needs; the guard adds
+ * session verification, AnkWorks membership verification, and the user-scoped
+ * token assertion before the actual GitHub call is made.
+ */
+async function authorize(session: SessionPayload, env: Env, repo: string, need: RepoNeed, action: string): Promise<void> {
+  await authorizeWrite(session, env, { repo, action, need });
 }
 
 function requireSession(env: Env, request: Request): Promise<SessionPayload | null> {
@@ -187,6 +174,8 @@ export async function handleCollabWrite(pathname: string, request: Request, env:
   const repo = requireRepo(pathname.split('/')[3] ?? '');
   const session = await requireSession(env, request);
   if (!session) return errorResponse(401, 'UNAUTHENTICATED', 'Sign in to use collaboration features.');
+  // CSRF: a cross-origin form post must never be able to act with this session.
+  if (!isSameOrigin(request)) return errorResponse(403, 'CSRF_FAILED', 'Cross-origin writes are not allowed.');
   const body = await readRequestBody(request);
 
   // ---- Create issue ----
@@ -195,7 +184,7 @@ export async function handleCollabWrite(pathname: string, request: Request, env:
     if (!title) return invalid('INVALID_TITLE', 'A non-empty title is required.');
     const labels = validLabels(body?.labels);
     if (labels === null) return invalid('INVALID_LABELS', 'One or more labels are invalid.');
-    await authorize(session, repo, 'read');
+    await authorize(session, env, repo, 'read', 'issue.create');
     const { status, data } = await upstreamWrite(session, 'POST', `/repos/${ORG_NAME}/${repo}/issues`, {
       title,
       body: validBody(body?.body),
@@ -210,7 +199,7 @@ export async function handleCollabWrite(pathname: string, request: Request, env:
   if (route.action === 'comments' && request.method === 'POST' && route.number !== null) {
     const text = typeof body?.body === 'string' && body.body.trim().length > 0 && body.body.length <= BODY_MAX ? body.body : null;
     if (!text) return invalid('INVALID_BODY', 'A non-empty comment body is required.');
-    await authorize(session, repo, 'read');
+    await authorize(session, env, repo, 'read', 'issue.comment');
     const { status, data } = await upstreamWrite(session, 'POST', `/repos/${ORG_NAME}/${repo}/issues/${route.number}/comments`, {
       body: text,
     });
@@ -237,7 +226,7 @@ export async function handleCollabWrite(pathname: string, request: Request, env:
       payload.labels = labels;
     }
     if (Object.keys(payload).length === 0) return invalid('EMPTY_UPDATE', 'Nothing to update.');
-    await authorize(session, repo, 'triage');
+    await authorize(session, env, repo, 'triage', 'issue.update');
     const { status, data } = await upstreamWrite(session, 'PATCH', `/repos/${ORG_NAME}/${repo}/issues/${route.number}`, payload);
     if (status < 200 || status >= 300) throw mapUpstreamFailure(status, data);
     logEvent('debug', 'issue_updated', { repo, number: route.number });
@@ -251,7 +240,7 @@ export async function handleCollabWrite(pathname: string, request: Request, env:
     const base = validateBranchName(body?.base);
     if (!title) return invalid('INVALID_TITLE', 'A non-empty title is required.');
     if (!head.ok || !base.ok) return invalid('INVALID_BRANCH', 'head and base must be valid branch names.');
-    await authorize(session, repo, 'read');
+    await authorize(session, env, repo, 'read', 'pull.create');
     const { status, data } = await upstreamWrite(session, 'POST', `/repos/${ORG_NAME}/${repo}/pulls`, {
       title,
       body: validBody(body?.body),
@@ -273,7 +262,7 @@ export async function handleCollabWrite(pathname: string, request: Request, env:
     if (event !== 'APPROVE' && text.trim().length === 0) {
       return invalid('INVALID_BODY', 'A review body is required unless approving.');
     }
-    await authorize(session, repo, 'triage');
+    await authorize(session, env, repo, 'triage', 'pull.review');
     const { status, data } = await upstreamWrite(session, 'POST', `/repos/${ORG_NAME}/${repo}/pulls/${route.number}/reviews`, {
       event,
       body: text,
@@ -289,7 +278,7 @@ export async function handleCollabWrite(pathname: string, request: Request, env:
     if (method !== 'merge' && method !== 'squash' && method !== 'rebase') {
       return invalid('INVALID_MERGE_METHOD', 'merge_method must be merge, squash, or rebase.');
     }
-    await authorize(session, repo, 'write');
+    await authorize(session, env, repo, 'write', 'pull.merge');
     const { status, data } = await upstreamWrite(session, 'PUT', `/repos/${ORG_NAME}/${repo}/pulls/${route.number}/merge`, {
       merge_method: method,
     });

@@ -90,7 +90,7 @@ function useRepositoryOptions(enabled: boolean) {
 }
 
 export default function NewIssueForm({ repo, issuesEnabled = true, onCreated, cancelHref }: NewIssueFormProps) {
-  const { status, user } = useAuth();
+  const { status, user, isMember, membershipMessage } = useAuth();
   const { repos, error: reposError } = useRepositoryOptions(status === 'authenticated' && !repo);
 
   const [selectedRepo, setSelectedRepo] = useState('');
@@ -144,6 +144,21 @@ export default function NewIssueForm({ repo, issuesEnabled = true, onCreated, ca
   }
 
   if (status !== 'authenticated') return <SignInPanel compact={Boolean(repo)} />;
+
+  // V3-B: writing through Forge requires a server-verified AnkWorks membership.
+  // A signed-in non-member reads public content only; guests use the separate
+  // moderated guest form instead.
+  if (!isMember) {
+    return (
+      <Panel aria-label="New issue" className="p-4 sm:p-6" data-testid="new-issue-members-only">
+        <h2 className="flex items-center gap-2 text-base font-semibold text-text">
+          <IssueIcon size={16} />
+          Members only
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-muted">{membershipMessage}</p>
+      </Panel>
+    );
+  }
 
   if (repo && !issuesEnabled) {
     return (

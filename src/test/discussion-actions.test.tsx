@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AuthProvider } from '../auth/AuthContext';
 import { CommentForm, IssueControls, PullRequestControls } from '../components/collaboration/DiscussionActions';
+import { MEMBER } from './helpers/membership';
 
 /** Milestone D UI: gated comment/issue/PR controls with truthful fallbacks. */
 
@@ -45,6 +46,7 @@ describe('DiscussionActions', () => {
       const url = String(input);
       if (url.includes('/api/auth/session')) return json(sessionBody(authenticated));
       if (url.includes('/api/auth/permissions')) return json(permissionsBody(permissions));
+      if (url.includes('/api/auth/membership')) return json(MEMBER({ login: authenticated ? 'octocat' : null, id: authenticated ? 7 : null }));
       return json({ number: 7, state: 'open', html_url: '', id: 1, merged: false, comment_id: 0, title: '' });
     });
   }

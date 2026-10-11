@@ -28,6 +28,8 @@ import type { Env } from './env';
 import { UpstreamError, errorResponse, jsonResponse } from './github-client';
 import { logEvent } from './logging';
 import { requireRepo } from './params';
+import { authorizeWrite } from './authorization';
+import { isSameOrigin } from './http';
 
 const API = 'https://api.github.com';
 const API_HEADERS = (token: string): Record<string, string> => ({
@@ -84,26 +86,34 @@ function mapWriteFailure(status: number, body: unknown): UpstreamError {
   return new UpstreamError(422, 'WRITE_REJECTED', 'GitHub rejected the write request.');
 }
 
-async function verifyPushAccess(session: SessionPayload, repo: string): Promise<void> {
-  const response = await fetch(`${API}/repos/${ORG_NAME}/${repo}`, {
-    method: 'GET',
-    redirect: 'manual',
-    headers: API_HEADERS(session.token),
-  });
-  if (response.status === 404) {
-    throw new UpstreamError(404, 'REPOSITORY_NOT_FOUND', 'Repository not found or not visible to you.');
-  }
-  if (!response.ok) throw new UpstreamError(502, 'GITHUB_AUTH_UNAVAILABLE', 'Could not verify repository permissions.');
-  const data = (await response.json()) as { permissions?: Record<string, unknown>; private?: boolean };
-  const permissions = data.permissions ?? {};
-  if (permissions.push !== true) {
-    throw new UpstreamError(403, 'FORBIDDEN', 'You need push access to modify this repository.');
+/**
+ * V3-B authorization for repository writes.
+ *
+ * Replaces the earlier push-only check with the full chain: session, verified
+ * AnkWorks membership, the user's real repository permission, a user-scoped
+ * token, and branch protection for the target branch.
+ */
+async function authorizeRepositoryWrite(
+  session: SessionPayload,
+  env: Env,
+  repo: string,
+  action: string,
+  branch?: string
+): Promise<void> {
+  await authorizeWrite(session, env, { repo, action, need: 'write', ...(branch ? { branch } : {}) });
+}
+
+/** CSRF: state-changing repository calls must come from our own origin. */
+function assertSameOrigin(request: Request): void {
+  if (!isSameOrigin(request)) {
+    throw new UpstreamError(403, 'CSRF_FAILED', 'Cross-origin writes are not allowed.');
   }
 }
 
 async function handleCommit(repo: string, request: Request, env: Env): Promise<Response> {
   const session = await readSession(request, env);
   if (!session) return authError(401, 'UNAUTHENTICATED', 'Sign in to commit changes.');
+  assertSameOrigin(request);
   const body = await readRequestBody(request);
   const message = validateCommitMessage(body?.message);
   const content = validateCommitContent(body?.content);
@@ -118,7 +128,7 @@ async function handleCommit(repo: string, request: Request, env: Env): Promise<R
     return authError(400, 'INVALID_BLOB_SHA', 'sha must be the 40-character blob sha of the file being replaced.');
   }
 
-  await verifyPushAccess(session, repo);
+  await authorizeRepositoryWrite(session, env, repo, 'repo.commit', branch.name);
 
   const payload: Record<string, unknown> = {
     message: message.message,
@@ -153,6 +163,7 @@ async function handleCommit(repo: string, request: Request, env: Env): Promise<R
 async function handleCreateBranch(repo: string, request: Request, env: Env): Promise<Response> {
   const session = await readSession(request, env);
   if (!session) return authError(401, 'UNAUTHENTICATED', 'Sign in to create branches.');
+  assertSameOrigin(request);
   const body = await readRequestBody(request);
   const name = validateBranchName(body?.name);
   const from = body?.from;
@@ -161,7 +172,7 @@ async function handleCreateBranch(repo: string, request: Request, env: Env): Pro
     return authError(400, 'INVALID_REF', 'A start point (from) is required.');
   }
 
-  await verifyPushAccess(session, repo);
+  await authorizeRepositoryWrite(session, env, repo, 'repo.createBranch');
 
   // Resolve the start point. A 40-hex string is treated as a commit sha;
   // anything else must be an existing branch.
