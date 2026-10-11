@@ -103,7 +103,7 @@ describe('auth routes', () => {
       expect(location.origin + location.pathname).toBe('https://github.com/login/oauth/authorize');
       expect(location.searchParams.get('client_id')).toBe(CLIENT_ID);
       expect(location.searchParams.get('redirect_uri')).toBe(`${ORIGIN}/api/auth/callback`);
-      expect(location.searchParams.get('scope')).toBe('read:user');
+      expect(location.searchParams.get('scope')).toBe('read:user read:org');
       const state = location.searchParams.get('state') ?? '';
       expect(state.length).toBeGreaterThan(20);
 
