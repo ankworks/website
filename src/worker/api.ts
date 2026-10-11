@@ -51,6 +51,12 @@ import { handleHealth, newRequestId, trackApiOutcome } from './ops';
 import { handleOrganizationActivity, handleOrganizationIssues, handleRepositoryCollaboration, validateRepositoryCollaborationRequest } from './collaboration';
 import { logEvent } from './logging';
 import { requireFilePath, requirePath, requireRef, requireRepo } from './params';
+import { handleInsightRoute, isInsightAction, logInsightRequest, type InsightAction } from './insights';
+import {
+  handleFeaturedAdminRoute,
+  handleFeaturedList,
+  handleMembershipRequest,
+} from './featured';
 
 export { parseNextLink, errorResponse };
 
@@ -325,6 +331,46 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
     // GET-only rule so their errors surface through the shared handler.
     if (path === '/api/auth/login' || path === '/api/auth/callback' || path === '/api/auth/session' || path === '/api/auth/logout' || path === '/api/auth/permissions') {
       return complete(await handleAuthRoute(request, env));
+    }
+
+    // V3-B: the signed-in user's own membership status. Private, never cached.
+    if (path === '/api/auth/membership') return complete(await handleMembershipRequest(request, env));
+
+    // V3-A: public list of featured (pinned) repositories.
+    if (path === '/api/featured') {
+      if (request.method !== 'GET') {
+        const response = errorResponse(405, 'METHOD_NOT_ALLOWED', 'Only GET is supported.');
+        response.headers.set('Allow', 'GET');
+        return complete(response);
+      }
+      return complete(await handleFeaturedList(request, env, ctx));
+    }
+
+    // V3-E: Forge administration routes (featured pins for now).
+    if (path.startsWith('/api/admin/')) {
+      const result = await handleFeaturedAdminRoute(path, request, env);
+      if (result) return complete(result);
+    }
+
+    // V3-A: repository insights (contributors, languages, releases, actions, docs).
+    const insightMatch = /^\/api\/repos\/([^/]+)\/([a-z-]+)$/.exec(path);
+    if (insightMatch && isInsightAction(insightMatch[2] ?? '')) {
+      if (request.method !== 'GET') {
+        const response = errorResponse(405, 'METHOD_NOT_ALLOWED', 'Only GET is supported.');
+        response.headers.set('Allow', 'GET');
+        return complete(response);
+      }
+      let decoded: string;
+      try {
+        decoded = decodeURIComponent(insightMatch[1] ?? '');
+      } catch {
+        return complete(errorResponse(400, 'INVALID_REPO', 'Invalid repository name.'));
+      }
+      const repo = requireRepo(decoded);
+      await verifyPublicRepository(repo, env);
+      const action = (insightMatch[2] ?? '') as InsightAction;
+      logInsightRequest(action);
+      return complete(await handleInsightRoute(action, repo, request, env, ctx));
     }
 
     // Authenticated writes and compare (Milestone C): POST commit/branches,

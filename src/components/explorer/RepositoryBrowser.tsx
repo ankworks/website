@@ -11,7 +11,7 @@ import BranchSelector from './BranchSelector';
 import { FileIcon, FolderIcon, SubmoduleIcon, SymlinkIcon } from './icons';
 import { ErrorState, ExternalLink, Notice, Panel, Skeleton, SkeletonRows, EmptyState } from './ui';
 
-const Markdown = lazy(() => import('./Markdown'));
+const RepoDocs = lazy(() => import('./RepoDocs'));
 
 interface RepositoryBrowserProps {
   repo: string;
@@ -31,7 +31,11 @@ export default function RepositoryBrowser({ repo, gitRef, path, showReadme }: Re
 
       <LastCommitBar repo={repo} gitRef={gitRef} path={path} />
       <DirectoryListing repo={repo} gitRef={gitRef} path={path} />
-      {showReadme && <ReadmeSection repo={repo} gitRef={gitRef} />}
+      {showReadme && (
+        <Suspense fallback={<Skeleton className="h-48 w-full" />}>
+          <RepoDocs repo={repo} gitRef={gitRef} />
+        </Suspense>
+      )}
     </div>
   );
 }
@@ -166,50 +170,3 @@ function DirectoryListing({ repo, gitRef, path }: { repo: string; gitRef: string
     </Panel>
   );
 }
-
-function ReadmeSection({ repo, gitRef }: { repo: string; gitRef: string }) {
-  const state = useAsync(`readme|${repo}|${gitRef}`, () => explorerApi.readme(repo, gitRef));
-
-  if (state.status === 'loading' || state.status === 'idle') {
-    return <Skeleton className="h-48 w-full" />;
-  }
-  if (state.status === 'error') {
-    if (state.error && typeof state.error === 'object' && 'code' in state.error && state.error.code === 'README_NOT_FOUND') {
-      return null;
-    }
-    return <ErrorState error={state.error} onRetry={state.reload} compact title="README unavailable" />;
-  }
-  const readme = state.data;
-  if (!readme) return null;
-
-  return (
-    <Panel aria-labelledby="readme-heading">
-      <div className="flex items-center justify-between gap-3 border-b border-border bg-elevated/40 px-4 py-2.5">
-        <h2 id="readme-heading" className="font-mono text-sm text-text">
-          {readme.name}
-        </h2>
-        <ExternalLink href={githubRepoLink(repo, 'blob', readme.commit_sha, readme.path)} className="text-xs">
-          Open on GitHub
-        </ExternalLink>
-      </div>
-      <div className="px-6 py-5 sm:px-8">
-        {readme.kind === 'text' && readme.content !== undefined ? (
-          <Suspense fallback={<SkeletonRows rows={5} label="Rendering README" />}>
-            <Markdown
-              source={readme.content}
-              name={readme.name}
-              context={{ repo, commitSha: readme.commit_sha, baseDir: parentPath(readme.path) }}
-            />
-          </Suspense>
-        ) : (
-          <Notice title={readme.kind === 'too-large' ? 'README is too large to display' : 'README cannot be displayed'}>
-            <ExternalLink href={githubRepoLink(repo, 'blob', readme.commit_sha, readme.path)}>
-              View the file on GitHub
-            </ExternalLink>
-          </Notice>
-        )}
-      </div>
-    </Panel>
-  );
-}
-

@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react';
 import { Link } from 'react-router-dom';
 import { explorerApi } from '../api/explorer';
+import { featuredApi } from '../api/featured';
 import { getRepositories } from '../api/github';
 import ActivityFeed from '../components/ActivityFeed';
 import { ForkIcon, RepoIcon, StarIcon } from '../components/explorer/icons';
@@ -16,9 +17,14 @@ const Markdown = lazy(() => import('../components/explorer/Markdown'));
 export default function OrganizationPage() {
   const org = useAsync('org', () => explorerApi.organization());
   const repos = useAsync('repos', () => getRepositories(false));
+  const pins = useAsync('featured', () => featuredApi.list());
   const profile = org.data?.org;
   const repositoryList = repos.data ?? [];
-  const featured = repositoryList.slice().sort((a, b) => b.stargazers_count - a.stargazers_count).slice(0, 3);
+
+  // Featured order: admin pins first (in their configured order), then the rest
+  // by stars. With no pins — or with pinning unconfigured — the dashboard falls
+  // back to the star ordering exactly as it did before V3.
+  const featured = useFeaturedOrder(repositoryList, pins.data?.items ?? []);
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-8 sm:px-6 lg:py-10">
@@ -104,6 +110,26 @@ export default function OrganizationPage() {
       <OrgProfileReadme />
     </div>
   );
+}
+
+/**
+ * Pins first, then the remaining repositories by stars.
+ *
+ * Only repositories that actually exist in the public list are shown, so a pin
+ * pointing at a renamed or deleted repository is skipped rather than fabricated.
+ */
+function useFeaturedOrder(repositoryList: Repository[], pins: Array<{ repo: string; position: number }>): Repository[] {
+  const byName = new Map(repositoryList.map((repo) => [repo.name.toLowerCase(), repo]));
+  const pinned: Repository[] = [];
+  for (const pin of [...pins].sort((a, b) => a.position - b.position)) {
+    const repo = byName.get(pin.repo.toLowerCase());
+    if (repo) pinned.push(repo);
+  }
+  const pinnedNames = new Set(pinned.map((repo) => repo.name.toLowerCase()));
+  const rest = repositoryList
+    .filter((repo) => !pinnedNames.has(repo.name.toLowerCase()))
+    .sort((a, b) => b.stargazers_count - a.stargazers_count);
+  return [...pinned, ...rest].slice(0, 3);
 }
 
 /**

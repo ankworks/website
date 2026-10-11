@@ -162,6 +162,26 @@ describe('explorer UI', () => {
           ],
         });
       }
+      if (p === '/api/repos/website/docs') {
+        return json({
+          repo: 'website',
+          commit_sha: SHA,
+          docs: [{ key: 'readme', label: 'README', path: 'README.md', name: 'README.md' }],
+        });
+      }
+      if (p === '/api/repos/website/doc') {
+        return json({
+          repo: 'website',
+          commit_sha: SHA,
+          key: url.searchParams.get('key'),
+          path: 'README.md',
+          name: 'README.md',
+          kind: 'text',
+          size: 100,
+          html_url: 'https://github.com/ankworks/website/blob/main/README.md',
+          content: '# Website\n\nSee [the docs](./docs/guide.md).\n\n![logo](./logo.png)\n',
+        });
+      }
       if (p === '/api/repos/website/readme') {
         return json({
           repo: 'website',
@@ -445,10 +465,11 @@ describe('explorer UI', () => {
     it('lists commits with short SHA, author and a GitHub link, and paginates with URL state', async () => {
       const user = userEvent.setup();
       renderAt('/repos/website/commits/main');
-      expect(await screen.findByText('Ship explorer')).toBeInTheDocument();
+      // The commit title and author also appear in the sidebar's recent-activity list.
+      await screen.findAllByText('Ship explorer');
       expect(screen.getByText('ccccccc')).toBeInTheDocument();
-      expect(screen.getByText('Ada')).toBeInTheDocument();
-      const commitLink = screen.getByRole('link', { name: /Ship explorer/ });
+      expect(screen.getAllByText('Ada').length).toBeGreaterThan(0);
+      const commitLink = screen.getAllByRole('link', { name: /Ship explorer/ })[0] as HTMLAnchorElement;
       expect(commitLink.getAttribute('href')).toBe(`https://github.com/ankworks/website/commit/${SHA}`);
 
       const older = screen.getByRole('link', { name: /Older/ });

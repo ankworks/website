@@ -210,3 +210,76 @@ export const PlusIcon = (props: IconProps) => (
     <path d="M8 3v10M3 8h10" />
   </Svg>
 );
+
+export const BookIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M2.5 3.25h4A2 2 0 0 1 8.5 5.25v8.5a1.5 1.5 0 0 0-1.5-1.5h-4.5v-9Z" />
+    <path d="M13.5 3.25h-4A2 2 0 0 0 7.5 5.25v8.5a1.5 1.5 0 0 1 1.5-1.5h4.5v-9Z" />
+  </Svg>
+);
+
+export const UsersIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <circle cx="6" cy="5.5" r="2.25" />
+    <path d="M1.75 13.25c0-2.35 1.9-3.5 4.25-3.5s4.25 1.15 4.25 3.5" />
+    <path d="M10.75 3.5a2.25 2.25 0 0 1 0 4.25M11.5 9.9c1.6.35 2.75 1.4 2.75 3.35" />
+  </Svg>
+);
+
+export const EyeIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M1.5 8S4 3.75 8 3.75 14.5 8 14.5 8 12 12.25 8 12.25 1.5 8 1.5 8Z" />
+    <circle cx="8" cy="8" r="1.9" />
+  </Svg>
+);
+
+export const RocketIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M6.5 11.5 3.75 12l.5-2.75 5-5a2 2 0 0 1 2.75 2.75l-5 5Z" />
+    <path d="M8 10.25 9.75 12M6 11.5c-1.5.5-2.5 1.75-2.5 1.75s1.25-1 1.75-2.5M11 7.25c.5-1.5 1.75-2.5 1.75-2.5s-1.25 1-2.5 1.75" />
+  </Svg>
+);
+
+export const ShieldIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M8 1.75 12.75 3.5v4.25c0 3-2 5.25-4.75 6.5-2.75-1.25-4.75-3.5-4.75-6.5V3.5L8 1.75Z" />
+  </Svg>
+);
+
+export const GearIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <circle cx="8" cy="8" r="2.25" />
+    <path d="M8 1.5v1.75M8 12.75V14.5M2.2 5.2l1.5.87M12.3 9.93l1.5.87M2.2 10.8l1.5-.87M12.3 6.07l1.5-.87" />
+  </Svg>
+);
+
+export const PlayIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M5 3.5l7 4.5-7 4.5v-9Z" />
+  </Svg>
+);
+
+export const ScaleIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M8 2.5v11M4 5.5h8M2.75 5.5 1.5 9h2.5l-1.25-3.5ZM13.25 5.5 12 9h2.5l-1.25-3.5Z" />
+  </Svg>
+);
+
+export const GlobeIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <circle cx="8" cy="8" r="6" />
+    <path d="M2 8h12M8 2c1.6 1.7 2.4 3.7 2.4 6S9.6 12.3 8 14C6.4 12.3 5.6 10.3 5.6 8S6.4 3.7 8 2Z" />
+  </Svg>
+);
+
+export const ChevronDownIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M4 6.25 8 10l4-3.75" />
+  </Svg>
+);
+
+export const XIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M4 4l8 8M12 4l-8 8" />
+  </Svg>
+);

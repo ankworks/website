@@ -112,6 +112,12 @@ export interface GitHubGetOptions {
   notFound?: { code: string; message: string };
   /** Error to report for HTTP 422 (GitHub uses it for unknown refs). */
   unprocessable?: { code: string; message: string };
+  /**
+   * Error to report for HTTP 403 that is NOT rate limiting. GitHub answers 403
+   * for features that are switched off (for example Actions), and a caller may
+   * prefer an explicit "unavailable" code over a generic upstream failure.
+   */
+  forbidden?: { code: string; message: string };
 }
 
 function isRateLimited(response: Response): boolean {
@@ -156,6 +162,9 @@ export function upstreamErrorFor(response: Response, options: GitHubGetOptions =
       'GitHub API rate limit reached. Please try again later.',
       retryAfterFromHeaders(response)
     );
+  }
+  if (response.status === 403 && options.forbidden) {
+    return new UpstreamError(403, options.forbidden.code, options.forbidden.message);
   }
   if (response.status === 404) {
     const notFound =

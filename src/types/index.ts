@@ -172,6 +172,13 @@ export interface RepositoryDetail extends Repository {
   has_wiki: boolean;
   /** False when the repository has turned GitHub Issues off (writes return 410). */
   has_issues: boolean;
+  /** True when the repository has GitHub Discussions enabled. */
+  has_discussions: boolean;
+  /**
+   * GitHub subscribers ("Watchers" in GitHub's own sidebar), or null when
+   * GitHub did not report it. Never derived from stargazers_count.
+   */
+  watchers_count: number | null;
 }
 
 export interface RepositoryDetailResponse {
