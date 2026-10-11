@@ -90,10 +90,25 @@ describe('DiscussionActions', () => {
     render(<AuthProvider><PullRequestControls repo="website" number={3} state="open" /></AuthProvider>);
     const merge = await screen.findByTestId('merge-button');
     fireEvent.click(merge);
+    // V3-C: merging is irreversible, so it takes a second, explicit click and
+    // the request carries `confirm: true` for the Worker to check.
+    await screen.findByTestId('merge-confirm-prompt');
+    expect(paths().some((p) => p === '/api/repos/website/pulls/3/merge')).toBe(false);
+    fireEvent.click(screen.getByTestId('merge-confirm-button'));
     await waitFor(() => expect(paths().some((p) => p === '/api/repos/website/pulls/3/merge')).toBe(true));
     const call = fetchMock.mock.calls.find((entry) => String(entry[0]).endsWith('/merge'));
-    expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({ merge_method: 'squash' });
+    expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({ merge_method: 'squash', confirm: true });
     await screen.findByText(/Pull request merged/);
+  });
+
+  it('cancels a pending merge without calling GitHub', async () => {
+    stubSession(true, { canWrite: true, canTriage: true });
+    render(<AuthProvider><PullRequestControls repo="website" number={3} state="open" /></AuthProvider>);
+    fireEvent.click(await screen.findByTestId('merge-button'));
+    await screen.findByTestId('merge-confirm-button');
+    fireEvent.click(screen.getByTestId('merge-cancel-button'));
+    expect(screen.getByTestId('merge-button')).toBeTruthy();
+    expect(paths().some((p) => p.endsWith('/merge'))).toBe(false);
   });
 
   it('submits an approval review', async () => {

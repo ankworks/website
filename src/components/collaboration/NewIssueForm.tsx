@@ -25,6 +25,8 @@ import { ORG_NAME } from '../../shared/validation';
 import { issuePath } from '../../shared/routes';
 import { CommitIcon, IssueIcon, PlusIcon } from '../explorer/icons';
 import { Panel, Skeleton } from '../explorer/ui';
+import IssueTemplatePicker from './IssueTemplatePicker';
+import type { IssueTemplate } from '../../shared/issue-templates';
 
 const BODY_MAX = 10_000;
 const TITLE_MAX = 300;
@@ -102,6 +104,18 @@ export default function NewIssueForm({ repo, issuesEnabled = true, onCreated, ca
   const [created, setCreated] = useState<{ result: CollabWriteResult; repo: string } | null>(null);
 
   const targetRepo = repo ?? selectedRepo;
+
+  /** Apply an issue template: pre-fill title, body, and labels (V3-C). */
+  const applyTemplate = useCallback(
+    (template: IssueTemplate) => {
+      setTitle(template.title ?? title);
+      setBody(template.body);
+      if (template.labels.length > 0) {
+        setLabels(template.labels.join(', '));
+      }
+    },
+    [title]
+  );
 
   const submit = useCallback(
     async (event: FormEvent) => {
@@ -218,6 +232,10 @@ export default function NewIssueForm({ repo, issuesEnabled = true, onCreated, ca
               {ORG_NAME}/{repo}
             </Link>
           </p>
+        )}
+
+        {targetRepo && (
+          <IssueTemplatePicker repo={targetRepo} onSelect={applyTemplate} />
         )}
 
         <label className="block text-xs text-muted">

@@ -50,6 +50,10 @@ export interface RepoContext {
   detail: RepositoryDetail;
   /** Default branch, or "HEAD" when GitHub did not report one. */
   defaultRef: string;
+  /** True when the repository has GitHub Discussions enabled. */
+  hasDiscussions: boolean;
+  /** True when the repository has a GitHub Wiki enabled. */
+  hasWiki: boolean;
 }
 
 export type RepoTab =
@@ -189,7 +193,7 @@ export default function RepoShell({ repo, tab, gitRef, sidebar = true, children 
         className="grid grid-cols-1 gap-6 py-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)]"
       >
         <main data-repo-main="" className="min-w-0">
-          {children({ detail, defaultRef })}
+          {children({ detail, defaultRef, hasDiscussions: detail.has_discussions, hasWiki: detail.has_wiki })}
         </main>
         {sidebar && (
           <div className="min-w-0 lg:sticky lg:top-20 lg:self-start">

@@ -48,6 +48,8 @@ import { githubUrl, sanitizeContentsObject } from './sanitize';
 import { classifyContent, decodeBase64, resolveCommit } from './explorer';
 import { requireRef } from './params';
 import { logEvent } from './logging';
+import { handleIssueTemplates as readIssueTemplates } from './issue-templates';
+import type { IssueTemplatesResponse } from '../shared/issue-templates';
 
 /** Public insight data changes slowly; a 5 minute shared cache is safe and cheap. */
 const TTL_SECONDS = 5 * 60;
@@ -657,11 +659,28 @@ export async function handleFileSearch(
   });
 }
 
+/** Issue templates (V3-C): read-only, cached with the other public insights. */
+export async function handleIssueTemplatesRoute(
+  repo: string,
+  params: URLSearchParams,
+  request: Request,
+  env: Env,
+  ctx?: ExecutionContext
+): Promise<Response> {
+  const ref = params.get('ref');
+  const key = cacheKeyFor(new URL(request.url).origin, `/api/repos/${repo}/issue-templates`, { ref: ref ?? '' });
+  return serveCached(key, ctx, async () => {
+    const templates = await readIssueTemplates(repo, ref, env);
+    const body: IssueTemplatesResponse = { repo, enabled: templates.length > 0, templates };
+    return jsonResponse(body, TTL_SECONDS);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Router for the insight endpoints
 // ---------------------------------------------------------------------------
 
-export const INSIGHT_ACTIONS = ['contributors', 'languages', 'releases', 'workflows', 'runs', 'docs', 'doc', 'file-search'] as const;
+export const INSIGHT_ACTIONS = ['contributors', 'languages', 'releases', 'workflows', 'runs', 'docs', 'doc', 'file-search', 'issue-templates'] as const;
 export type InsightAction = (typeof INSIGHT_ACTIONS)[number];
 
 export function isInsightAction(value: string): value is InsightAction {
@@ -693,6 +712,8 @@ export async function handleInsightRoute(
       return handleRepoDoc(repo, params, request, env, ctx);
     case 'file-search':
       return handleFileSearch(repo, params, request, env, ctx);
+    case 'issue-templates':
+      return handleIssueTemplatesRoute(repo, params, request, env, ctx);
     default:
       throw new UpstreamError(404, 'NOT_FOUND', 'API endpoint not found.');
   }

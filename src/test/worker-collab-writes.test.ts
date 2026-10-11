@@ -252,13 +252,13 @@ describe('collaboration writes', () => {
     it('merges only with write access and a valid merge method', async () => {
       const c = await cookie();
       const badMethod = await handleApiRequest(
-        writeRequest('/api/repos/website/pulls/3/merge', 'PUT', { merge_method: 'fast-forward' }, c),
+        writeRequest('/api/repos/website/pulls/3/merge', 'PUT', { merge_method: 'fast-forward', confirm: true }, c),
         env()
       );
       expect(badMethod.status).toBe(400);
 
       stubPermissions({ push: false, pull: true });
-      const denied = await handleApiRequest(writeRequest('/api/repos/website/pulls/3/merge', 'PUT', { merge_method: 'merge' }, c), env());
+      const denied = await handleApiRequest(writeRequest('/api/repos/website/pulls/3/merge', 'PUT', { merge_method: 'merge', confirm: true }, c), env());
       expect(denied.status).toBe(403);
       expect(seenUpstream().some((href) => href.includes('/merge'))).toBe(false);
 
@@ -268,7 +268,7 @@ describe('collaboration writes', () => {
         expect((init?.headers as Record<string, string>).Authorization).toBe(`Bearer ${USER_TOKEN}`);
         return json({ merged: true, sha: 'f'.repeat(40) });
       });
-      const ok = await handleApiRequest(writeRequest('/api/repos/website/pulls/3/merge', 'PUT', { merge_method: 'squash' }, c), env());
+      const ok = await handleApiRequest(writeRequest('/api/repos/website/pulls/3/merge', 'PUT', { merge_method: 'squash', confirm: true }, c), env());
       expect(ok.status).toBe(200);
       expect(((await ok.json()) as { merged: boolean }).merged).toBe(true);
     });

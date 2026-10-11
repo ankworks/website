@@ -24,6 +24,8 @@ const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 const ReleasesPage = lazy(() => import("./pages/ReleasesPage"));
 const ActionsPage = lazy(() => import("./pages/ActionsPage"));
 const NewFilePage = lazy(() => import("./pages/NewFilePage"));
+const DiscussionsPage = lazy(() => import("./pages/DiscussionsPage"));
+const DiscussionDetailPage = lazy(() => import("./pages/DiscussionDetailPage"));
 
 function PageFallback() {
   return (
@@ -130,6 +132,22 @@ export default function App() {
             element={
               <LazyPage>
                 <ActionsPage />
+              </LazyPage>
+            }
+          />
+          <Route
+            path="repos/:repo/discussions"
+            element={
+              <LazyPage>
+                <DiscussionsPage />
+              </LazyPage>
+            }
+          />
+          <Route
+            path="repos/:repo/discussions/:number"
+            element={
+              <LazyPage>
+                <DiscussionDetailPage />
               </LazyPage>
             }
           />

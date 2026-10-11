@@ -27,6 +27,7 @@ import {
   type WorkflowRunsResponse,
 } from '../shared/insights';
 import { isMembershipResponse, type MembershipResponse } from '../shared/membership';
+import { isIssueTemplatesResponse, type IssueTemplatesResponse } from '../shared/issue-templates';
 import { ExplorerApiError } from './explorer';
 
 const API_BASE = '/api';
@@ -160,6 +161,10 @@ export const insightsApi = {
    */
   membership: (): Promise<MembershipResponse> =>
     getJson(buildUrl('/auth/membership'), isMembershipResponse, { cache: false }),
+
+  /** V3-C: issue templates from `.github/ISSUE_TEMPLATE/` (display only). */
+  issueTemplates: (repo: string, ref?: string): Promise<IssueTemplatesResponse> =>
+    getJson(buildUrl(`/repos/${encodeURIComponent(repo)}/issue-templates`, { ref }), isIssueTemplatesResponse),
 };
 
 /** Clear cached insight responses (tests and explicit refresh). */

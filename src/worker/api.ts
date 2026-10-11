@@ -51,6 +51,8 @@ import { handleHealth, newRequestId, trackApiOutcome } from './ops';
 import { handleOrganizationActivity, handleOrganizationIssues, handleRepositoryCollaboration, validateRepositoryCollaborationRequest } from './collaboration';
 import { logEvent } from './logging';
 import { requireFilePath, requirePath, requireRef, requireRepo } from './params';
+import { handleDiscussionRoute, isDiscussionRoute } from './discussions';
+import { handleReactionsRoute, isReactionsRoute } from './reactions';
 import { handleInsightRoute, isInsightAction, logInsightRequest, type InsightAction } from './insights';
 import {
   handleFeaturedAdminRoute,
@@ -170,7 +172,7 @@ async function handleRepositoryDetail(repo: string, request: Request, env: Env, 
   });
 }
 
-async function verifyPublicRepository(repo: string, env: Env): Promise<void> {
+export async function verifyPublicRepository(repo: string, env: Env): Promise<void> {
   // Check visibility live before every scoped read. This prevents a newly-private
   // repository's previously public data from being served from a route cache.
   const response = await githubGet(buildGitHubUrl(repoApiPath(repo)), env, {
@@ -372,6 +374,26 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
       logInsightRequest(action);
       return complete(await handleInsightRoute(action, repo, request, env, ctx));
     }
+
+    // V3-C: Discussions (GraphQL) and reactions. Discussions are matched before
+    // the generic repo-scoped GET handler, which would otherwise swallow
+    // /discussions as an unknown sub-resource. Reads are public but still
+    // gated on the repository actually being public, so a private repository's
+    // discussions can never be served here.
+    if (isDiscussionRoute(request.method, path)) {
+      if (request.method === 'GET') {
+        const repoName = path.split('/')[3] ?? '';
+        let decoded = repoName;
+        try {
+          decoded = decodeURIComponent(repoName);
+        } catch {
+          return complete(errorResponse(400, 'INVALID_REPO', 'Invalid repository name.'));
+        }
+        await verifyPublicRepository(requireRepo(decoded), env);
+      }
+      return complete(await handleDiscussionRoute(path, request, env));
+    }
+    if (isReactionsRoute(path)) return complete(await handleReactionsRoute(path, request, env));
 
     // Authenticated writes and compare (Milestone C): POST commit/branches,
     // GET compare. GET /branches passes through to the read-only list route.

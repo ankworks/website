@@ -143,7 +143,7 @@ describe('V3-B write authorization: guests and non-members are read-only', () =>
       ['/api/repos/website/issues/7', 'PATCH', { title: 'renamed' }],
       ['/api/repos/website/pulls', 'POST', { title: 't', head: 'a', base: 'main' }],
       ['/api/repos/website/pulls/7/reviews', 'POST', { event: 'APPROVE' }],
-      ['/api/repos/website/pulls/7/merge', 'PUT', { merge_method: 'squash' }],
+      ['/api/repos/website/pulls/7/merge', 'PUT', { merge_method: 'squash', confirm: true }],
       ['/api/repos/website/commit', 'POST', COMMIT],
       ['/api/repos/website/branches', 'POST', { name: 'feature/x', from: 'main' }],
     ] as Array<[string, string, unknown]>) {
@@ -160,7 +160,7 @@ describe('V3-B write authorization: guests and non-members are read-only', () =>
       ['/api/repos/website/issues/7', 'PATCH', { title: 'renamed' }],
       ['/api/repos/website/pulls', 'POST', { title: 't', head: 'a', base: 'main' }],
       ['/api/repos/website/pulls/7/reviews', 'POST', { event: 'APPROVE' }],
-      ['/api/repos/website/pulls/7/merge', 'PUT', { merge_method: 'squash' }],
+      ['/api/repos/website/pulls/7/merge', 'PUT', { merge_method: 'squash', confirm: true }],
       ['/api/repos/website/commit', 'POST', COMMIT],
       ['/api/repos/website/branches', 'POST', { name: 'feature/x', from: 'main' }],
     ] as Array<[string, string, unknown]>) {
@@ -218,7 +218,7 @@ describe('V3-B write authorization: real repository permission still applies', (
   });
 
   it('refuses a member without write access from merging', async () => {
-    const result = await call('/api/repos/website/pulls/7/merge', 'PUT', { merge_method: 'squash' }, {
+    const result = await call('/api/repos/website/pulls/7/merge', 'PUT', { merge_method: 'squash', confirm: true }, {
       permissions: { triage: true },
     });
     expect(result.status).toBe(403);

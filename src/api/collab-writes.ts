@@ -27,6 +27,17 @@ export interface UpdateIssueInput {
   title?: string;
   state?: 'open' | 'closed';
   labels?: string[];
+  body?: string;
+  state_reason?: 'completed' | 'not_planned';
+  assignees?: string[];
+  milestone?: number | null;
+}
+
+export interface UpdatePullInput {
+  title?: string;
+  body?: string;
+  state?: 'open' | 'closed';
+  base?: string;
 }
 
 export interface CreatePullInput {
@@ -100,7 +111,30 @@ export const collabWrites = {
     return writeFetch(`/api/repos/${enc(repo)}/pulls/${number}/reviews`, 'POST', input).then(readResult);
   },
 
+  /**
+   * Merge a pull request. `confirm` is required: the Worker refuses a merge
+   * that was not explicitly confirmed, so a stray click or a replayed request
+   * cannot merge anything.
+   */
   mergePull(repo: string, number: number, mergeMethod: 'merge' | 'squash' | 'rebase'): Promise<CollabWriteResult> {
-    return writeFetch(`/api/repos/${enc(repo)}/pulls/${number}/merge`, 'PUT', { merge_method: mergeMethod }).then(readResult);
+    return writeFetch(`/api/repos/${enc(repo)}/pulls/${number}/merge`, 'PUT', {
+      merge_method: mergeMethod,
+      confirm: true,
+    }).then(readResult);
+  },
+
+  updatePull(repo: string, number: number, input: UpdatePullInput): Promise<CollabWriteResult> {
+    return writeFetch(`/api/repos/${enc(repo)}/pulls/${number}`, 'PATCH', input).then(readResult);
+  },
+
+  editComment(repo: string, commentId: number, body: string): Promise<CollabWriteResult> {
+    return writeFetch(`/api/repos/${enc(repo)}/comments/${commentId}`, 'PATCH', { body }).then(readResult);
+  },
+
+  deleteComment(repo: string, commentId: number): Promise<{ deleted: boolean; id: number }> {
+    return writeFetch(`/api/repos/${enc(repo)}/comments/${commentId}`, 'DELETE', {}).then(async (response) => {
+      if (!response.ok) throw await readError(response);
+      return (await response.json()) as { deleted: boolean; id: number };
+    });
   },
 };

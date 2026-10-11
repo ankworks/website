@@ -17,6 +17,7 @@ import { useRepoPermissions } from '../../hooks/useRepoPermissions';
 import { ORG_NAME } from '../../shared/validation';
 import { CommitIcon } from '../explorer/icons';
 import { Notice } from '../explorer/ui';
+import WriteAccessNotice from './WriteAccessNotice';
 
 function SignInNotice({ action }: { action: string }) {
   const { authEnabled } = useAuth();
@@ -62,11 +63,13 @@ function Feedback({ error, done }: { error: string | null; done: string | null }
 // ---------------------------------------------------------------------------
 
 export function CommentForm({ repo, number, onPosted, label = 'Add a comment' }: { repo: string; number: number; onPosted?: () => void; label?: string }) {
-  const { status } = useAuth();
+  const { status, isMember } = useAuth();
   const [body, setBody] = useState('');
   const { busy, error, done, run } = useSubmit();
 
   if (status !== 'authenticated') return <SignInNotice action="Comment on this discussion" />;
+  // V3-B: being signed in is not enough — only verified AnkWorks members write.
+  if (!isMember) return <WriteAccessNotice action="comment here" />;
 
   return (
     <section aria-label={label} className="space-y-2 rounded-md border border-border bg-elevated/40 p-3">
@@ -105,12 +108,13 @@ export function CommentForm({ repo, number, onPosted, label = 'Add a comment' }:
 // ---------------------------------------------------------------------------
 
 export function IssueControls({ repo, number, state, labels, onChanged }: { repo: string; number: number; state: string; labels: string[]; onChanged?: () => void }) {
-  const { status } = useAuth();
+  const { status, isMember } = useAuth();
   const permissions = useRepoPermissions(repo);
   const [labelText, setLabelText] = useState('');
   const { busy, error, done, run } = useSubmit();
 
   if (status !== 'authenticated') return <SignInNotice action="Manage this issue" />;
+  if (!isMember) return <WriteAccessNotice action="close, reopen, or label this issue" />;
   if (permissions.loaded && !permissions.canTriage) {
     return <p className="text-xs text-muted">Managing labels and issue state requires triage access to {`${ORG_NAME}/${repo}`}.</p>;
   }
@@ -173,13 +177,17 @@ export function IssueControls({ repo, number, state, labels, onChanged }: { repo
 const REVIEW_EVENTS = ['COMMENT', 'APPROVE', 'REQUEST_CHANGES'] as const;
 
 export function PullRequestControls({ repo, number, state, onChanged }: { repo: string; number: number; state: string; onChanged?: () => void }) {
-  const { status } = useAuth();
+  const { status, isMember } = useAuth();
   const permissions = useRepoPermissions(repo);
   const [reviewBody, setReviewBody] = useState('');
   const [mergeMethod, setMergeMethod] = useState<'merge' | 'squash' | 'rebase'>('squash');
+  // Merging is irreversible, so it takes two clicks — and the server demands the
+  // same explicit confirmation before it touches GitHub.
+  const [confirming, setConfirming] = useState(false);
   const { busy, error, done, run } = useSubmit();
 
   if (status !== 'authenticated') return <SignInNotice action="Review or merge this pull request" />;
+  if (!isMember) return <WriteAccessNotice action="review or merge this pull request" />;
   if (permissions.loaded && !permissions.canTriage && !permissions.canWrite) {
     return <p className="text-xs text-muted">Reviewing or merging requires triage access to {`${ORG_NAME}/${repo}`}.</p>;
   }
@@ -194,6 +202,7 @@ export function PullRequestControls({ repo, number, state, onChanged }: { repo: 
   const merge = () =>
     void run(async () => {
       await collabWrites.mergePull(repo, number, mergeMethod);
+      setConfirming(false);
       onChanged?.();
     }, 'Pull request merged.');
 
@@ -243,16 +252,43 @@ export function PullRequestControls({ repo, number, state, onChanged }: { repo: 
               <option value="rebase">Rebase</option>
             </select>
           </label>
-          <button
-            type="button"
-            disabled={busy || state === 'closed'}
-            onClick={merge}
-            data-testid="merge-button"
-            className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary enabled:hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            <CommitIcon size={14} />
-            {busy ? 'Merging…' : 'Merge pull request'}
-          </button>
+          {confirming ? (
+            <>
+              <button
+                type="button"
+                disabled={busy || state === 'closed'}
+                onClick={merge}
+                data-testid="merge-confirm-button"
+                className="inline-flex items-center gap-1.5 rounded-md border border-primary bg-primary px-2.5 py-1.5 text-xs font-semibold text-white enabled:hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <CommitIcon size={14} />
+                {busy ? 'Merging…' : `Yes, ${mergeMethod} merge`}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setConfirming(false)}
+                data-testid="merge-cancel-button"
+                className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-text hover:bg-elevated disabled:opacity-70"
+              >
+                Cancel
+              </button>
+              <span className="text-xs text-muted" data-testid="merge-confirm-prompt">
+                This cannot be undone from Forge.
+              </span>
+            </>
+          ) : (
+            <button
+              type="button"
+              disabled={busy || state === 'closed'}
+              onClick={() => setConfirming(true)}
+              data-testid="merge-button"
+              className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary enabled:hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              <CommitIcon size={14} />
+              Merge pull request
+            </button>
+          )}
           <button type="button" disabled={busy} onClick={toggleState} className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-text hover:bg-elevated disabled:opacity-70">
             {state === 'open' ? 'Close pull request' : 'Reopen pull request'}
           </button>

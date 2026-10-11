@@ -11,6 +11,7 @@ import IssueMarkdown from './IssueMarkdown';
 import LabelList from './LabelList';
 import Pagination from './Pagination';
 import { IssueStatus } from './IssueList';
+import ReactionsBar from './ReactionsBar';
 
 export default function IssueDetail({ repo, number }: { repo: string; number: number }) {
   const [searchParams] = useSearchParams();
@@ -42,6 +43,9 @@ export default function IssueDetail({ repo, number }: { repo: string; number: nu
           />
           <Panel aria-label="Issue description" className="p-4 sm:p-6">
             <IssueMarkdown source={issueItem.body ?? ''} label="Issue description" />
+            <div className="mt-4 border-t border-border pt-3">
+              <ReactionsBar repo={repo} kind="issue" target={String(number)} />
+            </div>
           </Panel>
           <section aria-labelledby="issue-comments-heading" className="space-y-3">
             <div className="flex items-center gap-2">
@@ -59,7 +63,7 @@ export default function IssueDetail({ repo, number }: { repo: string; number: nu
               <>
                 {comments.data.comments.length ? (
                   <ol className="space-y-3" aria-label="Issue comments">
-                    {comments.data.comments.map((comment) => <IssueCommentCard key={comment.id} comment={comment} />)}
+                    {comments.data.comments.map((comment) => <IssueCommentCard key={comment.id} comment={comment} repo={repo} />)}
                   </ol>
                 ) : (
                   <Panel><EmptyState title="No comments on this issue." /></Panel>
@@ -96,12 +100,15 @@ function IssueHeader({ issue }: { issue: IssueSummary }) {
   );
 }
 
-function IssueCommentCard({ comment }: { comment: IssueComment }) {
+function IssueCommentCard({ comment, repo }: { comment: IssueComment; repo: string }) {
   return (
     <li>
       <Panel className="overflow-hidden">
         <CommentHeader author={comment.author?.login ?? null} avatar={comment.author?.avatar_url ?? null} createdAt={comment.created_at} />
         <div className="p-4"><IssueMarkdown source={comment.body} label="Issue comment" /></div>
+        <div className="border-t border-border px-4 py-2">
+          <ReactionsBar repo={repo} kind="issue-comment" target={String(comment.id)} />
+        </div>
       </Panel>
     </li>
   );
