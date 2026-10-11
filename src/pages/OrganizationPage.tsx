@@ -1,6 +1,6 @@
-import { Suspense, lazy } from 'react';
 import { Link } from 'react-router-dom';
 import { explorerApi } from '../api/explorer';
+import { featuredApi } from '../api/featured';
 import { getRepositories } from '../api/github';
 import ActivityFeed from '../components/ActivityFeed';
 import { ForkIcon, RepoIcon, StarIcon } from '../components/explorer/icons';
@@ -9,16 +9,20 @@ import { useAsync } from '../hooks/useAsync';
 import { formatDate, formatExactCount, formatRelative } from '../lib/format';
 import { repoPath } from '../shared/routes';
 import type { Repository } from '../types';
-
-const Markdown = lazy(() => import('../components/explorer/Markdown'));
+import OrgProfileReadme from '../components/explorer/OrgProfileReadme';
 
 /** "/" — organization dashboard backed by live public GitHub data. */
 export default function OrganizationPage() {
   const org = useAsync('org', () => explorerApi.organization());
   const repos = useAsync('repos', () => getRepositories(false));
+  const pins = useAsync('featured', () => featuredApi.list());
   const profile = org.data?.org;
   const repositoryList = repos.data ?? [];
-  const featured = repositoryList.slice().sort((a, b) => b.stargazers_count - a.stargazers_count).slice(0, 3);
+
+  // Featured order: admin pins first (in their configured order), then the rest
+  // by stars. With no pins — or with pinning unconfigured — the dashboard falls
+  // back to the star ordering exactly as it did before V3.
+  const featured = useFeaturedOrder(repositoryList, pins.data?.items ?? []);
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-8 sm:px-6 lg:py-10">
@@ -107,68 +111,23 @@ export default function OrganizationPage() {
 }
 
 /**
- * `ankworks/.github/profile/README.md` rendered below the organization
- * overview and featured projects. Missing repository/file shows a graceful
- * fallback; load failures stay quiet with a retry.
+ * Pins first, then the remaining repositories by stars.
+ *
+ * Only repositories that actually exist in the public list are shown, so a pin
+ * pointing at a renamed or deleted repository is skipped rather than fabricated.
  */
-function OrgProfileReadme() {
-  const state = useAsync('org-profile-readme', () => explorerApi.orgProfileReadme());
-  const errorCode = (state.error as { code?: unknown } | null)?.code;
-
-  return (
-    <section aria-labelledby="profile-readme-heading" id="org-profile-readme" className="min-w-0">
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Organization profile</p>
-          <h2 id="profile-readme-heading" className="mt-1 text-lg font-semibold text-text">
-            About AnkWorks
-          </h2>
-          <p className="mt-0.5 font-mono text-xs text-muted">ankworks/.github · profile/README.md</p>
-        </div>
-        {state.status === 'success' && state.data && (
-          <ExternalLink href={state.data.html_url} className="text-sm font-medium text-primary hover:underline">
-            View source on GitHub
-          </ExternalLink>
-        )}
-      </div>
-
-      {state.status === 'loading' || state.status === 'idle' ? (
-        <div className="rounded-lg border border-border bg-surface p-6">
-          <SkeletonRows rows={6} label="Loading the organization profile README" />
-        </div>
-      ) : state.status === 'error' ? (
-        errorCode === 'PROFILE_README_NOT_FOUND' ? (
-          <div className="rounded-lg border border-border bg-surface">
-            <EmptyState title="The organization has not published a profile README.">
-              <ExternalLink href="https://github.com/ankworks/.github" className="text-primary/90 hover:text-primary">
-                View ankworks/.github on GitHub
-              </ExternalLink>
-            </EmptyState>
-          </div>
-        ) : (
-          <ErrorState error={state.error} onRetry={state.reload} compact title="Profile README unavailable" />
-        )
-      ) : state.data ? (
-        state.data.kind === 'text' && state.data.content !== undefined ? (
-          <div className="rounded-lg border border-border bg-surface px-6 py-6 sm:px-8">
-            <Suspense fallback={<SkeletonRows rows={6} label="Rendering the profile README" />}>
-              <Markdown
-                source={state.data.content}
-                name="profile/README.md"
-                context={{ repo: state.data.repo, commitSha: state.data.commit_sha, baseDir: 'profile' }}
-              />
-            </Suspense>
-          </div>
-        ) : (
-          <Notice title="The profile README cannot be displayed">
-            <ExternalLink href={state.data.html_url} className="text-primary/90 hover:text-primary">
-              View the file on GitHub
-            </ExternalLink>
-          </Notice>
-        )
-      ) : null}
-    </section>
-  );
+function useFeaturedOrder(repositoryList: Repository[], pins: Array<{ repo: string; position: number }>): Repository[] {
+  const byName = new Map(repositoryList.map((repo) => [repo.name.toLowerCase(), repo]));
+  const pinned: Repository[] = [];
+  for (const pin of [...pins].sort((a, b) => a.position - b.position)) {
+    const repo = byName.get(pin.repo.toLowerCase());
+    if (repo) pinned.push(repo);
+  }
+  const pinnedNames = new Set(pinned.map((repo) => repo.name.toLowerCase()));
+  const rest = repositoryList
+    .filter((repo) => !pinnedNames.has(repo.name.toLowerCase()))
+    .sort((a, b) => b.stargazers_count - a.stargazers_count);
+  return [...pinned, ...rest].slice(0, 3);
 }
 
 function Metric({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {

@@ -10,6 +10,7 @@
  */
 
 import { ORG_NAME } from '../shared/validation';
+import { isHiddenRepo, parseHiddenRepos } from '../shared/visibility';
 import { readSession } from './auth';
 import type { Env } from './env';
 import { UpstreamError, errorResponse, jsonResponse, readJson } from './github-client';
@@ -68,7 +69,7 @@ function sanitizeSearchItems(type: SearchType, payload: unknown): Array<Record<s
   });
 }
 
-export async function handleSearch(request: Request): Promise<Response> {
+export async function handleSearch(request: Request, env?: Pick<Env, 'FORGE_SELF_REPO'>): Promise<Response> {
   if (request.method !== 'GET') {
     const response = errorResponse(405, 'METHOD_NOT_ALLOWED', 'Only GET is supported.');
     response.headers.set('Allow', 'GET');
@@ -102,8 +103,19 @@ export async function handleSearch(request: Request): Promise<Response> {
   }
   const payload = await readJson(response);
   const total = isRecord(payload) && typeof payload.total_count === 'number' ? payload.total_count : 0;
+  const hidden = parseHiddenRepos(env?.FORGE_SELF_REPO);
+  let items = sanitizeSearchItems(type, payload);
+  if (hidden.length > 0) {
+    // Visibility rule: drop results that belong to a hidden repository. The
+    // match is on the `owner/name` pair or on the bare repository name.
+    items = items.filter((item) => {
+      const repoName = String(item.repo ?? item.title ?? '');
+      const short = repoName.split('/').pop() ?? repoName;
+      return !isHiddenRepo(short, hidden) && !isHiddenRepo(repoName, hidden);
+    });
+  }
   logEvent('debug', 'search_performed', { type });
-  return jsonResponse({ query, type, total_count: total, items: sanitizeSearchItems(type, payload) }, 60);
+  return jsonResponse({ query, type, total_count: total, items }, 60);
 }
 
 export async function handleNotifications(request: Request, env: Env): Promise<Response> {

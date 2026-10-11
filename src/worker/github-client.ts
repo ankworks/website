@@ -22,6 +22,7 @@ import { logEvent } from './logging';
 export const GITHUB_API_ORIGIN = 'https://api.github.com';
 const USER_AGENT = 'AnkWorks-Website/1.0 (+https://works.ankb.qzz.io)';
 const GITHUB_API_VERSION = '2022-11-28';
+const GITHUB_VERSION = GITHUB_API_VERSION;
 export const UPSTREAM_TIMEOUT_MS = 8000;
 /** Maximum number of redirects followed for a single logical request. */
 const MAX_REDIRECTS = 3;
@@ -79,6 +80,24 @@ export function jsonResponse(body: unknown, ttlSeconds: number): Response {
 type QueryValue = string | number | undefined;
 
 /** Build an allowlisted GitHub API URL. Throws for any path outside the organization. */
+/**
+ * Paths the client is allowed to reach.
+ *
+ * `/graphql` is included because Discussions exist only in the GraphQL API —
+ * but every GraphQL operation is additionally sent as a **parameterised**
+ * document (see `githubGraphql`), so a caller can never smuggle an arbitrary
+ * query string past this allowlist.
+ */
+function isAllowedGitHubPath(pathname: string): boolean {
+  return (
+    pathname === `/orgs/${ORG_NAME}` ||
+    pathname.startsWith(`/orgs/${ORG_NAME}/`) ||
+    pathname.startsWith(`/repos/${ORG_NAME}/`) ||
+    pathname === '/search/issues' ||
+    pathname === '/graphql'
+  );
+}
+
 export function buildGitHubUrl(path: string, query?: Record<string, QueryValue>): string {
   const url = new URL(path, GITHUB_API_ORIGIN);
   const allowed =
@@ -112,6 +131,12 @@ export interface GitHubGetOptions {
   notFound?: { code: string; message: string };
   /** Error to report for HTTP 422 (GitHub uses it for unknown refs). */
   unprocessable?: { code: string; message: string };
+  /**
+   * Error to report for HTTP 403 that is NOT rate limiting. GitHub answers 403
+   * for features that are switched off (for example Actions), and a caller may
+   * prefer an explicit "unavailable" code over a generic upstream failure.
+   */
+  forbidden?: { code: string; message: string };
 }
 
 function isRateLimited(response: Response): boolean {
@@ -130,7 +155,7 @@ function retryAfterFromHeaders(response: Response): number {
   return 60;
 }
 
-type FetchFailureStage = 'upstream_fetch' | 'upstream_body';
+type FetchFailureStage = 'upstream_fetch' | 'upstream_body' | 'upstream_graphql';
 
 /** Map a rejected fetch (or body read) to a safe, explicit upstream error. */
 export function mapFetchError(
@@ -156,6 +181,9 @@ export function upstreamErrorFor(response: Response, options: GitHubGetOptions =
       'GitHub API rate limit reached. Please try again later.',
       retryAfterFromHeaders(response)
     );
+  }
+  if (response.status === 403 && options.forbidden) {
+    return new UpstreamError(403, options.forbidden.code, options.forbidden.message);
   }
   if (response.status === 404) {
     const notFound =
@@ -191,12 +219,7 @@ export function validateGitHubRedirect(location: string | null, fromUrl: string)
     return null;
   }
   if (url.origin !== GITHUB_API_ORIGIN || url.username !== '' || url.password !== '') return null;
-  const allowed =
-    url.pathname === `/orgs/${ORG_NAME}` ||
-    url.pathname.startsWith(`/orgs/${ORG_NAME}/`) ||
-    url.pathname.startsWith(`/repos/${ORG_NAME}/`) ||
-    url.pathname === '/search/issues';
-  return allowed ? url.toString() : null;
+  return isAllowedGitHubPath(url.pathname) ? url.toString() : null;
 }
 
 /**
@@ -355,6 +378,104 @@ export function expectObject(payload: unknown): Record<string, unknown> {
 /** Contents path → API URL segment (no trailing slash for the repository root). */
 export function contentsApiPath(repo: string, path: string): string {
   return path === '' ? repoApiPath(repo, '/contents') : repoApiPath(repo, `/contents/${encodePathSegments(path)}`);
+}
+
+
+/**
+ * Named, parameterised GraphQL operations (V3-C).
+ *
+ * Discussions are only exposed through GraphQL, and reactions on discussions
+ * and review comments are far simpler there. To keep that power bounded:
+ *
+ * - The caller may only select an operation **by name** from `GRAPHQL_OPERATIONS`;
+ *   the document text is never supplied by the request.
+ * - Variables are built by the caller's own builder function from already
+ *   validated input; they are passed through GraphQL variables, never
+ *   interpolated into the document.
+ * - GitHub `errors[]` are surfaced as an explicit error instead of being
+ *   silently treated as success — a partially failed mutation must never be
+ *   reported as if it had succeeded.
+ */
+export interface GraphQLOperation {
+  /** Stable name, used in logs and error codes. */
+  name: string;
+  query: string;
+}
+
+export interface GraphQLResult<T> {
+  data: T | null;
+  errors: Array<{ message: string; type?: string; path?: unknown[] }>;
+}
+
+const GRAPHQL_ENDPOINT = `${GITHUB_API_ORIGIN}/graphql`;
+const GRAPHQL_TIMEOUT_MS = UPSTREAM_TIMEOUT_MS;
+const GRAPHQL_MAX_BYTES = 512 * 1024;
+
+export async function githubGraphql<T>(
+  operation: GraphQLOperation,
+  variables: Record<string, unknown>,
+  token: string | undefined,
+  options: { env?: { GITHUB_TOKEN?: string }; label?: string } = {}
+): Promise<T> {
+  if (!isAllowedGitHubPath('/graphql')) {
+    throw new UpstreamError(500, 'INTERNAL_ERROR', 'An unexpected error occurred.');
+  }
+  const headers: Record<string, string> = {
+    'User-Agent': USER_AGENT,
+    Accept: 'application/vnd.github+json',
+    'Content-Type': 'application/json',
+    'X-GitHub-Api-Version': GITHUB_VERSION,
+  };
+  const bearer = token ?? options.env?.GITHUB_TOKEN;
+  if (bearer) headers.Authorization = `Bearer ${bearer}`;
+
+  const startedAt = Date.now();
+  let response: Response;
+  try {
+    response = await fetch(GRAPHQL_ENDPOINT, {
+      method: 'POST',
+      headers,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(GRAPHQL_TIMEOUT_MS),
+      body: JSON.stringify({ operationName: operation.name, query: operation.query, variables }),
+    });
+  } catch (error) {
+    throw mapFetchError(error, 'upstream_graphql');
+  }
+  const durationMs = Date.now() - startedAt;
+
+  if (response.status === 401) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new UpstreamError(401, 'UNAUTHENTICATED', 'GitHub rejected your session. Sign in again.');
+  }
+  if (response.status === 403) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new UpstreamError(403, 'FORBIDDEN', 'GitHub refused this action for your account.');
+  }
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined);
+    logEvent('warn', 'upstream_status', { stage: 'upstream_graphql', upstreamStatus: response.status, durationMs });
+    throw new UpstreamError(502, 'GITHUB_UNAVAILABLE', 'GitHub is unavailable right now.');
+  }
+
+  const payload = (await readJson(response, GRAPHQL_MAX_BYTES)) as GraphQLResult<T>;
+  if (payload && Array.isArray(payload.errors) && payload.errors.length > 0) {
+    const first = payload.errors[0];
+    const message = typeof first?.message === 'string' ? first.message : 'GitHub rejected the operation.';
+    logEvent('warn', 'graphql_errors', {
+      stage: 'upstream_graphql',
+      operation: operation.name,
+      label: options.label,
+      count: payload.errors.length,
+      errorType: first?.type ?? null,
+    });
+    // A partially applied mutation must never be reported as a success.
+    throw new UpstreamError(502, 'GRAPHQL_ERROR', message);
+  }
+  if (!payload || payload.data === null || payload.data === undefined) {
+    throw new UpstreamError(502, 'GITHUB_RESPONSE_INVALID', 'GitHub API returned an unexpected response format.');
+  }
+  return payload.data;
 }
 
 const LINK_NEXT = /<([^>]+)>\s*;\s*rel="next"/;

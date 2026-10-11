@@ -172,6 +172,13 @@ export interface RepositoryDetail extends Repository {
   has_wiki: boolean;
   /** False when the repository has turned GitHub Issues off (writes return 410). */
   has_issues: boolean;
+  /** True when the repository has GitHub Discussions enabled. */
+  has_discussions: boolean;
+  /**
+   * GitHub subscribers ("Watchers" in GitHub's own sidebar), or null when
+   * GitHub did not report it. Never derived from stargazers_count.
+   */
+  watchers_count: number | null;
 }
 
 export interface RepositoryDetailResponse {
@@ -342,6 +349,87 @@ export interface CreateBranchRequestBody {
 export interface CreateBranchResponse {
   name: string;
   sha: string;
+}
+
+// ---------------------------------------------------------------------------
+// Directive C: file management
+// ---------------------------------------------------------------------------
+
+/** `POST /api/repos/:repo/files` — create a file. */
+export interface FileCreateRequestBody {
+  /** Full repository-relative path. Alternatively send `directory` + `name`. */
+  path?: string;
+  /** Parent directory, "" for the repository root. */
+  directory?: string;
+  /** File name (one path segment). */
+  name?: string;
+  /** UTF-8 text content. */
+  content: string;
+  message: string;
+  /** Branch to base the change on. */
+  branch: string;
+  /** Commit to this new branch instead (created from `branch`). */
+  newBranch?: string;
+  /** Blob sha when replacing an existing file. */
+  sha?: string;
+}
+
+/** `DELETE /api/repos/:repo/files` — delete one file. */
+export interface FileDeleteRequestBody {
+  path: string;
+  message: string;
+  branch: string;
+  /** Blob sha of the file as currently loaded; the delete is refused on mismatch. */
+  sha: string;
+}
+
+/** `POST /api/repos/:repo/files/move` — rename or move. */
+export interface FileMoveRequestBody {
+  from: string;
+  to: string;
+  message: string;
+  branch: string;
+  newBranch?: string;
+  /** Blob sha of the source file, when known, for concurrent-change detection. */
+  sha?: string;
+}
+
+/** One rewritten path in a move (a directory move rewrites several). */
+export interface FileMoveEntry {
+  from: string;
+  to: string;
+}
+
+/**
+ * Result of every file mutation.
+ *
+ * `atomic` and `commits` describe what actually happened. The move endpoint
+ * reports `atomic: true, commits: 1` because it builds one Git tree; if it ever
+ * had to fall back to create + delete, those fields would say so rather than
+ * claim atomicity.
+ */
+export interface FileMutationResponse {
+  repo: string;
+  action: 'create' | 'delete' | 'move';
+  /** Branch the commit landed on. */
+  branch: string;
+  /** Branch the change was based on (differs from `branch` for a new branch). */
+  base_branch?: string;
+  path: string;
+  /** Source path for a move. */
+  from?: string;
+  /** Destination path for a move. */
+  to?: string;
+  /** Every rewritten path for a directory move. */
+  files?: FileMoveEntry[];
+  commit: { sha: string; html_url: string };
+  content?: { sha: string; path: string };
+  /** True when the change is one commit with no intermediate state. */
+  atomic?: boolean;
+  /** Number of GitHub commits the operation produced. */
+  commits?: number;
+  /** True when the commit went to a newly created branch. */
+  new_branch?: boolean;
 }
 
 /** One file in a compare range. */

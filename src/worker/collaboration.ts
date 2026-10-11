@@ -16,6 +16,11 @@ import {
   repoApiPath,
 } from './github-client';
 import { githubUrl, sanitizeCommit } from './sanitize';
+import { isHiddenRepo, parseHiddenRepos } from '../shared/visibility';
+
+function hiddenRepos(env: Pick<Env, 'FORGE_SELF_REPO'>): string[] {
+  return parseHiddenRepos(env.FORGE_SELF_REPO);
+}
 
 const CACHE_TTL_SECONDS = 60;
 const DEFAULT_PER_PAGE = 30;
@@ -242,6 +247,8 @@ async function handleIssueCollection(
     const items = rawItems.flatMap((item) => {
       const itemRepo = repo ?? repositoryNameFromSearchItem(item);
       if (!itemRepo) return [];
+      // Visibility rule: never surface the repository Forge is built from.
+      if (isHiddenRepo(itemRepo, hiddenRepos(env))) return [];
       if (resource === 'issues') {
         const issue = sanitizeIssueFields(item, itemRepo, false);
         return issue ? [issue] : [];
@@ -503,10 +510,11 @@ function sanitizeOrganizationEvent(input: unknown): OrganizationEvent | null {
   return { id: raw.id, actor: actorLogin, repo, created_at: createdAt, ...event };
 }
 
-export async function handleOrganizationActivity(request: Request, _env: Env, ctx?: ExecutionContext): Promise<Response> {
+export async function handleOrganizationActivity(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   const params = new URL(request.url).searchParams;
   const limit = parsePositiveInt(params.get('limit'), 10, 20);
   if (limit === null) throw new UpstreamError(400, 'INVALID_PARAMETER', 'Activity limit must be between 1 and 20.');
+  const hidden = hiddenRepos(env);
   const key = cacheKeyFor(new URL(request.url).origin, '/api/activity', { limit });
   return serveCached(key, ctx, async () => {
     const response = await githubGet(buildGitHubUrl(`/orgs/${ORG_NAME}/events`, { per_page: EVENT_PAGE_SIZE }), {}, {
@@ -515,6 +523,8 @@ export async function handleOrganizationActivity(request: Request, _env: Env, ct
     const events = expectArray(await readJson(response))
       .map(sanitizeOrganizationEvent)
       .filter((event): event is OrganizationEvent => event !== null)
+      // Visibility rule: drop activity belonging to a hidden repository.
+      .filter((event) => !isHiddenRepo(event.repo, hidden))
       .slice(0, limit);
     return jsonResponse({ events, fetched_at: new Date().toISOString() }, CACHE_TTL_SECONDS);
   });

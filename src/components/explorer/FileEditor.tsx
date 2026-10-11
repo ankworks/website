@@ -17,10 +17,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { changesApi } from '../../api/changes';
 import { ExplorerApiError } from '../../api/explorer';
+import { filesApi } from '../../api/files';
 import { useAuth } from '../../auth/AuthContext';
 import { useRepoPermissions } from '../../hooks/useRepoPermissions';
 import type { LinkContext } from '../../shared/markdown-links';
-import { ORG_NAME } from '../../shared/validation';
+import { ORG_NAME, encodePathSegments } from '../../shared/validation';
 import CodeEditor from './CodeEditor';
 import { CheckIcon, CommitIcon } from './icons';
 import Markdown from './Markdown';
@@ -55,17 +56,35 @@ interface Gate {
 }
 
 export default function FileEditor({ fileName, initialContent, context, onDirtyChange, target, preview = true }: FileEditorProps) {
-  const { status } = useAuth();
+  const { status, isMember, membershipMessage, user } = useAuth();
   const permissions = useRepoPermissions(target?.repo ?? null);
   const [baseline, setBaseline] = useState(initialContent);
   const [draft, setDraft] = useState(initialContent);
   const dirty = draft !== baseline;
 
+  /**
+   * Creating a new file defaults to a NEW branch: writing straight to the
+   * default branch is rarely what anyone wants, and a protected branch would
+   * refuse it anyway. Editing an existing file keeps its branch, because the
+   * user is already looking at it.
+   */
+  const suggestedBranch = useMemo(() => {
+    if (!target || target.blobSha) return target?.ref ?? '';
+    const login = (user?.login ?? 'patch').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+    const slug = fileName
+      .replace(/[^A-Za-z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .toLowerCase();
+    return `${login || 'patch'}/${slug || 'file'}`;
+  }, [fileName, target, user?.login]);
+
   const [message, setMessage] = useState('');
-  const [branchName, setBranchName] = useState(target?.ref ?? '');
+  const [branchName, setBranchName] = useState(() => suggestedBranch);
   const [busy, setBusy] = useState(false);
   const [commitError, setCommitError] = useState<string | null>(null);
   const [result, setResult] = useState<{ sha: string; htmlUrl: string; branch: string } | null>(null);
+  /** GitHub compare URL for turning a branch commit into a pull request. */
+  const [compareUrl, setCompareUrl] = useState<string | null>(null);
 
   useEffect(() => {
     onDirtyChange?.(dirty);
@@ -84,12 +103,14 @@ export default function FileEditor({ fileName, initialContent, context, onDirtyC
   const gate = useMemo<Gate>(() => {
     if (status === 'loading') return { ok: false, title: 'Checking your sign-in status…' };
     if (status !== 'authenticated') return { ok: false, title: 'Committing to GitHub requires sign-in.' };
+    // V3-B: only verified AnkWorks members may write through Forge.
+    if (!isMember) return { ok: false, title: membershipMessage };
     if (!target) return { ok: false, title: 'This file has no commit target.' };
     if (permissions.error) return { ok: false, title: permissions.error };
     if (!permissions.loaded) return { ok: false, title: 'Checking repository permissions…' };
     if (!permissions.canWrite) return { ok: false, title: `Committing requires write access to ${ORG_NAME}/${target.repo}.` };
     return { ok: true, title: '' };
-  }, [status, target, permissions]);
+  }, [status, isMember, membershipMessage, target, permissions]);
 
   const discard = useCallback(() => {
     if (!window.confirm(`Discard the unsaved draft changes to ${fileName}?`)) return;
@@ -101,27 +122,51 @@ export default function FileEditor({ fileName, initialContent, context, onDirtyC
     setBusy(true);
     setCommitError(null);
     setResult(null);
+    const wantsNewBranch = branchName.trim() !== '' && branchName.trim() !== target.ref;
     try {
-      const branch = branchName.trim() || target.ref;
-      if (branch !== target.ref) {
-        try {
-          await changesApi.createBranch(target.repo, { name: branch, from: target.ref });
-        } catch (error) {
-          // Committing to an existing branch is valid — only real failures stop us.
-          const code = error instanceof ExplorerApiError ? error.code : '';
-          if (code !== 'BRANCH_EXISTS') throw error;
+      let result: { sha: string; htmlUrl: string; branch: string };
+      if (target.blobSha) {
+        // Replacing an existing file: the blob sha lets GitHub reject a
+        // concurrent change instead of silently overwriting it.
+        let branch = target.ref;
+        if (wantsNewBranch) {
+          branch = branchName.trim();
+          try {
+            await changesApi.createBranch(target.repo, { name: branch, from: target.ref });
+          } catch (error) {
+            // Committing to an existing branch is valid — only real failures stop us.
+            const code = error instanceof ExplorerApiError ? error.code : '';
+            if (code !== 'BRANCH_EXISTS') throw error;
+          }
         }
+        const response = await changesApi.commit(target.repo, {
+          message,
+          content: draft,
+          branch,
+          path: target.path,
+          sha: target.blobSha,
+        });
+        result = { sha: response.commit.sha, htmlUrl: response.commit.html_url, branch: response.branch };
+      } else {
+        // Creating a new file: the file API refuses a duplicate path (409)
+        // instead of overwriting whatever is already there.
+        const response = await filesApi.create(target.repo, {
+          path: target.path,
+          content: draft,
+          message,
+          branch: target.ref,
+          ...(wantsNewBranch ? { newBranch: branchName.trim() } : {}),
+        });
+        result = { sha: response.commit.sha, htmlUrl: response.commit.html_url, branch: response.branch };
       }
-      const response = await changesApi.commit(target.repo, {
-        message,
-        content: draft,
-        branch,
-        path: target.path,
-        sha: target.blobSha,
-      });
       setBaseline(draft);
-      setResult({ sha: response.commit.sha, htmlUrl: response.commit.html_url, branch: response.branch });
+      setResult(result);
       setMessage('');
+      if (result.branch !== target.ref) {
+        setCompareUrl(
+          `https://github.com/${ORG_NAME}/${encodeURIComponent(target.repo)}/compare/${encodePathSegments(target.ref)}...${encodePathSegments(result.branch)}`
+        );
+      }
     } catch (error) {
       setCommitError(error instanceof ExplorerApiError ? error.message : 'The commit failed unexpectedly.');
     } finally {
@@ -208,6 +253,12 @@ export default function FileEditor({ fileName, initialContent, context, onDirtyC
               <>
                 {' · '}
                 <ExternalLink href={result.htmlUrl}>View commit</ExternalLink>
+              </>
+            ) : null}
+            {compareUrl ? (
+              <>
+                {' · '}
+                <ExternalLink href={compareUrl}>Open a pull request</ExternalLink>
               </>
             ) : null}
           </p>

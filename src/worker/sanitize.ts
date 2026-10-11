@@ -84,6 +84,12 @@ export function sanitizeRepositoryDetail(input: unknown, requestedName: string):
     homepage: asHttpsUrl(raw.homepage) ?? null,
     has_wiki: raw.has_wiki === true,
     has_issues: raw.has_issues === true,
+    has_discussions: raw.has_discussions === true,
+    // GitHub's "watchers_count" is the star count; the sidebar's Watchers figure
+    // is subscribers_count. Null when GitHub does not report it — never guessed.
+    watchers_count: typeof raw.subscribers_count === 'number' && Number.isFinite(raw.subscribers_count) && raw.subscribers_count >= 0
+      ? Math.floor(raw.subscribers_count)
+      : null,
   };
 }
 

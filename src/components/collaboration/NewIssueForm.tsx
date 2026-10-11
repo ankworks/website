@@ -25,6 +25,8 @@ import { ORG_NAME } from '../../shared/validation';
 import { issuePath } from '../../shared/routes';
 import { CommitIcon, IssueIcon, PlusIcon } from '../explorer/icons';
 import { Panel, Skeleton } from '../explorer/ui';
+import IssueTemplatePicker from './IssueTemplatePicker';
+import type { IssueTemplate } from '../../shared/issue-templates';
 
 const BODY_MAX = 10_000;
 const TITLE_MAX = 300;
@@ -90,7 +92,7 @@ function useRepositoryOptions(enabled: boolean) {
 }
 
 export default function NewIssueForm({ repo, issuesEnabled = true, onCreated, cancelHref }: NewIssueFormProps) {
-  const { status, user } = useAuth();
+  const { status, user, isMember, membershipMessage } = useAuth();
   const { repos, error: reposError } = useRepositoryOptions(status === 'authenticated' && !repo);
 
   const [selectedRepo, setSelectedRepo] = useState('');
@@ -102,6 +104,18 @@ export default function NewIssueForm({ repo, issuesEnabled = true, onCreated, ca
   const [created, setCreated] = useState<{ result: CollabWriteResult; repo: string } | null>(null);
 
   const targetRepo = repo ?? selectedRepo;
+
+  /** Apply an issue template: pre-fill title, body, and labels (V3-C). */
+  const applyTemplate = useCallback(
+    (template: IssueTemplate) => {
+      setTitle(template.title ?? title);
+      setBody(template.body);
+      if (template.labels.length > 0) {
+        setLabels(template.labels.join(', '));
+      }
+    },
+    [title]
+  );
 
   const submit = useCallback(
     async (event: FormEvent) => {
@@ -144,6 +158,21 @@ export default function NewIssueForm({ repo, issuesEnabled = true, onCreated, ca
   }
 
   if (status !== 'authenticated') return <SignInPanel compact={Boolean(repo)} />;
+
+  // V3-B: writing through Forge requires a server-verified AnkWorks membership.
+  // A signed-in non-member reads public content only; guests use the separate
+  // moderated guest form instead.
+  if (!isMember) {
+    return (
+      <Panel aria-label="New issue" className="p-4 sm:p-6" data-testid="new-issue-members-only">
+        <h2 className="flex items-center gap-2 text-base font-semibold text-text">
+          <IssueIcon size={16} />
+          Members only
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-muted">{membershipMessage}</p>
+      </Panel>
+    );
+  }
 
   if (repo && !issuesEnabled) {
     return (
@@ -203,6 +232,10 @@ export default function NewIssueForm({ repo, issuesEnabled = true, onCreated, ca
               {ORG_NAME}/{repo}
             </Link>
           </p>
+        )}
+
+        {targetRepo && (
+          <IssueTemplatePicker repo={targetRepo} onSelect={applyTemplate} />
         )}
 
         <label className="block text-xs text-muted">

@@ -14,7 +14,9 @@ import type { Env } from '../worker/env';
 
 const ORIGIN = 'https://works.example.test';
 const SESSION_KEY = 'session-encryption-key-0123456789abcdef';
-const USER_TOKEN = 'ghu_USER_TOKEN_987';
+// V3-B: an ordinary user OAuth token. Never a ghs_/ghu_ App token — Forge
+// refuses those for user writes.
+const USER_TOKEN = 'oauth-user-token-987';
 
 type Handler = (url: URL, init?: RequestInit) => Response | Promise<Response>;
 
@@ -33,7 +35,10 @@ function env(): Env {
 }
 
 function request(path: string, init: RequestInit = {}): Request {
-  return new Request(`${ORIGIN}${path}`, init);
+  // V3-B: state-changing requests must carry a same-origin Origin header.
+  const headers = new Headers(init.headers);
+  headers.set('Origin', ORIGIN);
+  return new Request(`${ORIGIN}${path}`, { ...init, headers });
 }
 
 async function sessionCookie(): Promise<string> {
@@ -61,9 +66,20 @@ describe('changes routes', () => {
   function stubFetch(handler: Handler) {
     fetchMock = vi.fn<[input: RequestInfo | URL, init?: RequestInit], Promise<Response>>(async (input, init) => {
       const url = new URL(String(input), ORIGIN);
-      return handler(url, init);
+      return withOrgDefaults(url, init, handler);
     });
     vi.stubGlobal('fetch', fetchMock);
+  }
+
+  /**
+   * V3-B defaults layered under every handler: the caller is a verified
+   * organization member, and the target branch is unprotected. Tests that need
+   * a different answer override these by matching the path first.
+   */
+  function withOrgDefaults(url: URL, init: RequestInit | undefined, handler: Handler): Response | Promise<Response> {
+    if (url.pathname === '/user/memberships/orgs/ankworks') return json({ state: 'active', role: 'member' });
+    if (/^\/repos\/ankworks\/[^/]+\/branches\//.test(url.pathname)) return json({ name: 'main', protected: false });
+    return handler(url, init);
   }
 
   function seenUpstream(): string[] {

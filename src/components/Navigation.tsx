@@ -41,9 +41,6 @@ export default function Navigation() {
         </nav>
 
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          <span className="hidden items-center gap-1.5 rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-muted sm:inline-flex">
-            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-primary" /> Read-only
-          </span>
           <AuthMenu />
           <ThemeToggle />
           <details className="relative xl:hidden">

@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { AuthProvider } from '../auth/AuthContext';
 import MarkdownEditor from '../components/explorer/MarkdownEditor';
+import { MEMBER } from './helpers/membership';
 
 /**
  * Milestone C commit UI: real commits behind sign-in + push permission,
@@ -51,6 +52,8 @@ describe('MarkdownEditor committing', () => {
       if (url.includes('/api/auth/permissions')) {
         return json({ owner: 'ankworks', repo: 'website', canRead: true, canWrite: canWrite, canTriage: canWrite, canAdmin: false, role: canWrite ? 'write' : 'read', source: 'user-token' });
       }
+      if (url.includes('/api/auth/membership')) return json(MEMBER());
+      if (url.includes('/api/auth/membership')) return json(MEMBER());
       return json({}, 404);
     });
   }
@@ -98,6 +101,7 @@ describe('MarkdownEditor committing', () => {
           content: { sha: 'b'.repeat(40), path: 'docs/guide.md' },
         });
       }
+      if (url.includes('/api/auth/membership')) return json(MEMBER());
       return json({}, 404);
     });
     renderEditor();
@@ -137,6 +141,7 @@ describe('MarkdownEditor committing', () => {
       if (url.includes('/api/repos/website/commit')) {
         return json({ branch: 'patch-1', path: 'docs/guide.md', commit: { sha: 'a'.repeat(40), message: 'x', html_url: '' }, content: { sha: 'b'.repeat(40), path: 'docs/guide.md' } });
       }
+      if (url.includes('/api/auth/membership')) return json(MEMBER());
       return json({}, 404);
     });
     renderEditor();
@@ -164,6 +169,7 @@ describe('MarkdownEditor committing', () => {
       if (url.includes('/api/auth/permissions')) {
         return json({ owner: 'ankworks', repo: 'website', canRead: true, canWrite: true, canTriage: true, canAdmin: false, role: 'write', source: 'user-token' });
       }
+      if (url.includes('/api/auth/membership')) return json(MEMBER());
       return json({ error: 'CONFLICT', message: 'The branch changed while you were editing.', status: 409 }, 409);
     });
     renderEditor();

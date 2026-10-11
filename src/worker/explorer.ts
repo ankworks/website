@@ -154,7 +154,7 @@ async function fetchContentsObject(env: Env, repo: string, path: string, commitS
   return object;
 }
 
-function decodeBase64(value: string): Uint8Array {
+export function decodeBase64(value: string): Uint8Array {
   let binary: string;
   try {
     binary = atob(value.replace(/\s/g, ''));

@@ -80,6 +80,39 @@ export function pullRequestPath(repo: string, number: number): string {
   return `${repoPath(repo)}/pulls/${number}`;
 }
 
+/** V3-A: repository releases list. */
+export function releaseListPath(repo: string, page = 1): string {
+  const base = `${repoPath(repo)}/releases`;
+  return page <= 1 ? base : `${base}?page=${page}`;
+}
+
+/** V3-A: read-only GitHub Actions viewer. */
+export function actionsPath(repo: string, page = 1): string {
+  const base = `${repoPath(repo)}/actions`;
+  return page <= 1 ? base : `${base}?page=${page}`;
+}
+
+/** V3-C: GitHub Discussions list. */
+export function discussionsPath(repo: string, page = 1): string {
+  const base = `${repoPath(repo)}/discussions`;
+  return page <= 1 ? base : `${base}?page=${page}`;
+}
+
+export function discussionPath(repo: string, number: number): string {
+  return `${repoPath(repo)}/discussions/${number}`;
+}
+
+/** V3-D: integrated GitHub Wiki viewer. */
+export function wikiPath(repo: string, page?: string): string {
+  const base = `${repoPath(repo)}/wiki`;
+  return page ? `${base}/${encodePathSegments(page)}` : base;
+}
+
+/** V3-E: Forge administration. */
+export function adminPath(section: 'root' | 'banners' | 'announcements' | 'featured' | 'moderation' | 'audit' = 'root'): string {
+  return section === 'root' ? '/admin' : `/admin/${section}`;
+}
+
 export function branchesPath(repo: string, page = 1): string {
   return page <= 1 ? `${repoPath(repo)}/branches` : `${repoPath(repo)}/branches?page=${page}`;
 }

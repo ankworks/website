@@ -6,6 +6,7 @@ import App from '../App';
 import { invalidateCache } from '../api/github';
 import { clearExplorerCache } from '../api/explorer';
 import { clearRepoPermissionsCache } from '../lib/repo-permissions-cache';
+import { MEMBER } from './helpers/membership';
 
 /**
  * Authenticated write UI, end to end through the real route table.
@@ -119,6 +120,10 @@ describe('authenticated write UI', () => {
       const path = url.pathname;
 
       if (path === '/api/auth/session') return json(SESSIONS[viewer]);
+      if (path === '/api/auth/membership') {
+        if (viewer === 'anonymous') return json({ state: 'not-member', login: null, id: null, role: null, reason: 'unauthenticated', isMember: false, isOrgAdmin: false, isForgeAdmin: false, checked_at: '2026-01-01T00:00:00.000Z', cached: false });
+        return json(MEMBER({ login: viewer === 'admin' ? 'octo-admin' : 'octo-read' }));
+      }
       if (path === '/api/auth/permissions') {
         if (viewer === 'anonymous') return json({ error: 'UNAUTHENTICATED', message: 'Sign in to detect repository permissions.', status: 401 }, 401);
         return json(permissionsFor(viewer));

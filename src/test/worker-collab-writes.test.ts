@@ -11,7 +11,8 @@ import type { Env } from '../worker/env';
 
 const ORIGIN = 'https://works.example.test';
 const SESSION_KEY = 'session-encryption-key-0123456789abcdef';
-const USER_TOKEN = 'ghu_USER_TOKEN_555';
+// V3-B: an ordinary user OAuth token (never a ghs_/ghu_ App token).
+const USER_TOKEN = 'oauth-user-token-555';
 
 type Handler = (url: URL, init?: RequestInit) => Response | Promise<Response>;
 
@@ -37,6 +38,8 @@ async function cookie(): Promise<string> {
 
 function writeRequest(path: string, method: string, body: unknown, sessionCookie: string | null): Request {
   const headers = new Headers({ 'Content-Type': 'application/json' });
+  // V3-B: state-changing requests must carry a same-origin Origin header.
+  headers.set('Origin', ORIGIN);
   if (sessionCookie) headers.set('Cookie', `${SESSION_COOKIE}=${encodeURIComponent(sessionCookie)}`);
   return new Request(`${ORIGIN}${path}`, { method, headers, body: JSON.stringify(body ?? {}) });
 }
@@ -46,7 +49,10 @@ describe('collaboration writes', () => {
 
   function stubFetch(handler: Handler) {
     fetchMock = vi.fn<[input: RequestInfo | URL, init?: RequestInit], Promise<Response>>(async (input, init) => {
-      return handler(new URL(String(input), ORIGIN), init);
+      const url = new URL(String(input), ORIGIN);
+      // V3-B default: the caller is a verified organization member.
+      if (url.pathname === '/user/memberships/orgs/ankworks') return json({ state: 'active', role: 'member' });
+      return handler(url, init);
     });
     vi.stubGlobal('fetch', fetchMock);
   }
@@ -246,13 +252,13 @@ describe('collaboration writes', () => {
     it('merges only with write access and a valid merge method', async () => {
       const c = await cookie();
       const badMethod = await handleApiRequest(
-        writeRequest('/api/repos/website/pulls/3/merge', 'PUT', { merge_method: 'fast-forward' }, c),
+        writeRequest('/api/repos/website/pulls/3/merge', 'PUT', { merge_method: 'fast-forward', confirm: true }, c),
         env()
       );
       expect(badMethod.status).toBe(400);
 
       stubPermissions({ push: false, pull: true });
-      const denied = await handleApiRequest(writeRequest('/api/repos/website/pulls/3/merge', 'PUT', { merge_method: 'merge' }, c), env());
+      const denied = await handleApiRequest(writeRequest('/api/repos/website/pulls/3/merge', 'PUT', { merge_method: 'merge', confirm: true }, c), env());
       expect(denied.status).toBe(403);
       expect(seenUpstream().some((href) => href.includes('/merge'))).toBe(false);
 
@@ -262,7 +268,7 @@ describe('collaboration writes', () => {
         expect((init?.headers as Record<string, string>).Authorization).toBe(`Bearer ${USER_TOKEN}`);
         return json({ merged: true, sha: 'f'.repeat(40) });
       });
-      const ok = await handleApiRequest(writeRequest('/api/repos/website/pulls/3/merge', 'PUT', { merge_method: 'squash' }, c), env());
+      const ok = await handleApiRequest(writeRequest('/api/repos/website/pulls/3/merge', 'PUT', { merge_method: 'squash', confirm: true }, c), env());
       expect(ok.status).toBe(200);
       expect(((await ok.json()) as { merged: boolean }).merged).toBe(true);
     });

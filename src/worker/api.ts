@@ -18,11 +18,17 @@
  * GET /api/repos/:repo/commits?ref=&page=     commit history (paginated)
  * GET /api/repos/:repo/raw?ref=&path=         raw file download (attachment)
  *
+ * Directive C file management (authenticated, user-scoped):
+ * POST   /api/repos/:repo/files               create a file (optionally on a new branch)
+ * DELETE /api/repos/:repo/files               delete one file, verified by blob sha
+ * POST   /api/repos/:repo/files/move          rename or move, in one atomic commit
+ *
  * `ref` and `path` travel in query parameters, so ref names containing "/"
  * never need to be split out of a URL path. Every route is GET-only.
  */
 
 import { ORG_NAME, parsePositiveInt } from '../shared/validation';
+import { filterHiddenRepos, isHiddenRepo, parseHiddenRepos } from '../shared/visibility';
 import type { RepositoriesResponse, Repository } from '../types';
 import type { TagsResponse } from '../types/collaboration';
 import { sanitizeRepository } from '../shared/repository';
@@ -51,8 +57,49 @@ import { handleHealth, newRequestId, trackApiOutcome } from './ops';
 import { handleOrganizationActivity, handleOrganizationIssues, handleRepositoryCollaboration, validateRepositoryCollaborationRequest } from './collaboration';
 import { logEvent } from './logging';
 import { requireFilePath, requirePath, requireRef, requireRepo } from './params';
+import { handleDiscussionRoute, isDiscussionRoute } from './discussions';
+import { handleFilesRoute, isFileRoute } from './files';
+import { handleReactionsRoute, isReactionsRoute } from './reactions';
+import { handleInsightRoute, isInsightAction, logInsightRequest, type InsightAction } from './insights';
+import {
+  handleFeaturedAdminRoute,
+  handleFeaturedList,
+  handleMembershipRequest,
+} from './featured';
 
 export { parseNextLink, errorResponse };
+
+/**
+ * Repositories Forge must not serve about itself.
+ *
+ * The block is applied BEFORE routing: every `/api/repos/:name/...` request —
+ * reads, insights, discussions, and writes alike — answers 404 for a hidden
+ * repository, so there is no route that can be reached by another path.
+ */
+export function hiddenRepos(env: Pick<Env, 'FORGE_SELF_REPO'>): string[] {
+  return parseHiddenRepos(env.FORGE_SELF_REPO);
+}
+
+const REPO_SCOPED = /^\/api\/repos\/([^/]+)(?:\/|$)/;
+
+/** The repository named in a scoped API path, or null for list routes. */
+export function repoInPath(pathname: string): string | null {
+  const match = REPO_SCOPED.exec(pathname);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1] ?? '');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 404 for a hidden repository. Deliberately identical to a repository that does
+ * not exist: revealing "hidden" would confirm the repository exists.
+ */
+function notFoundResponse(): Response {
+  return errorResponse(404, 'NOT_FOUND', 'API endpoint not found.');
+}
 
 export const CACHE_TTL_SECONDS = 5 * 60;
 const REPOS_PATH = '/api/repos';
@@ -124,7 +171,10 @@ export async function fetchAllPublicRepos(env: Pick<Env, 'GITHUB_TOKEN'>): Promi
 async function handleRepositoryList(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   const key = cacheKeyFor(new URL(request.url).origin, REPOS_PATH);
   return serveCached(key, ctx, async () => {
-    const repos = await fetchAllPublicRepos(env);
+    // Visibility rule applied at the source of every listing: a hidden
+    // repository never reaches the browser, so no page has to remember to
+    // filter it out.
+    const repos = filterHiddenRepos(await fetchAllPublicRepos(env), hiddenRepos(env));
     const body: RepositoriesResponse = {
       org: ORG_NAME,
       repos,
@@ -164,7 +214,7 @@ async function handleRepositoryDetail(repo: string, request: Request, env: Env, 
   });
 }
 
-async function verifyPublicRepository(repo: string, env: Env): Promise<void> {
+export async function verifyPublicRepository(repo: string, env: Env): Promise<void> {
   // Check visibility live before every scoped read. This prevents a newly-private
   // repository's previously public data from being served from a route cache.
   const response = await githubGet(buildGitHubUrl(repoApiPath(repo)), env, {
@@ -327,6 +377,81 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
       return complete(await handleAuthRoute(request, env));
     }
 
+    // V3-B: the signed-in user's own membership status. Private, never cached.
+    if (path === '/api/auth/membership') return complete(await handleMembershipRequest(request, env));
+
+    // Visibility rule: the repository Forge is built from is not served here.
+    // Applied before routing so no scoped route (read, write, insight, or
+    // discussion) can be reached for it.
+    const hidden = hiddenRepos(env);
+    if (hidden.length > 0) {
+      const scoped = repoInPath(path);
+      if (scoped !== null && isHiddenRepo(scoped, hidden)) return complete(notFoundResponse());
+    }
+
+    // V3-A: public list of featured (pinned) repositories.
+    if (path === '/api/featured') {
+      if (request.method !== 'GET') {
+        const response = errorResponse(405, 'METHOD_NOT_ALLOWED', 'Only GET is supported.');
+        response.headers.set('Allow', 'GET');
+        return complete(response);
+      }
+      return complete(await handleFeaturedList(request, env, ctx));
+    }
+
+    // V3-E: Forge administration routes (featured pins for now).
+    if (path.startsWith('/api/admin/')) {
+      const result = await handleFeaturedAdminRoute(path, request, env);
+      if (result) return complete(result);
+    }
+
+    // V3-A: repository insights (contributors, languages, releases, actions, docs).
+    const insightMatch = /^\/api\/repos\/([^/]+)\/([a-z-]+)$/.exec(path);
+    if (insightMatch && isInsightAction(insightMatch[2] ?? '')) {
+      if (request.method !== 'GET') {
+        const response = errorResponse(405, 'METHOD_NOT_ALLOWED', 'Only GET is supported.');
+        response.headers.set('Allow', 'GET');
+        return complete(response);
+      }
+      let decoded: string;
+      try {
+        decoded = decodeURIComponent(insightMatch[1] ?? '');
+      } catch {
+        return complete(errorResponse(400, 'INVALID_REPO', 'Invalid repository name.'));
+      }
+      const repo = requireRepo(decoded);
+      await verifyPublicRepository(repo, env);
+      const action = (insightMatch[2] ?? '') as InsightAction;
+      logInsightRequest(action);
+      return complete(await handleInsightRoute(action, repo, request, env, ctx));
+    }
+
+    // V3-C: Discussions (GraphQL) and reactions. Discussions are matched before
+    // the generic repo-scoped GET handler, which would otherwise swallow
+    // /discussions as an unknown sub-resource. Reads are public but still
+    // gated on the repository actually being public, so a private repository's
+    // discussions can never be served here.
+    if (isDiscussionRoute(request.method, path)) {
+      if (request.method === 'GET') {
+        const repoName = path.split('/')[3] ?? '';
+        let decoded = repoName;
+        try {
+          decoded = decodeURIComponent(repoName);
+        } catch {
+          return complete(errorResponse(400, 'INVALID_REPO', 'Invalid repository name.'));
+        }
+        await verifyPublicRepository(requireRepo(decoded), env);
+      }
+      return complete(await handleDiscussionRoute(path, request, env));
+    }
+    if (isReactionsRoute(path)) return complete(await handleReactionsRoute(path, request, env));
+
+    // Directive C: file management (create, delete, rename, move).
+    if (isFileRoute(request.method, path)) {
+      const filesMatch = /^\/api\/repos\/([^/]+)\/(files(?:\/move)?)$/.exec(path);
+      if (filesMatch) return complete(await handleFilesRoute(filesMatch[2] ?? '', filesMatch[1] ?? '', request, env));
+    }
+
     // Authenticated writes and compare (Milestone C): POST commit/branches,
     // GET compare. GET /branches passes through to the read-only list route.
     const changesMatch = /^\/api\/repos\/([^/]+)\/(commit|branches|compare)$/.exec(path);
@@ -349,7 +474,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
     }
 
     // Search, notifications, and health (Milestone F).
-    if (path === '/api/search') return complete(await handleSearch(request));
+    if (path === '/api/search') return complete(await handleSearch(request, env));
     if (path === '/api/notifications') return complete(await handleNotifications(request, env));
     if (path === '/api/health') return complete(handleHealth(request));
 
