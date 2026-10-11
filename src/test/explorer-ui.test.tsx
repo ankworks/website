@@ -520,9 +520,10 @@ describe('explorer UI', () => {
   describe('about and routing', () => {
     it('renders the about page with organization facts', async () => {
       renderAt('/about');
-      expect(await screen.findByRole('heading', { name: 'AnkWorks Forge' })).toBeInTheDocument();
+      expect(await screen.findByRole('heading', { name: 'AnkWorks' })).toBeInTheDocument();
       expect(await screen.findByText('Vietnam')).toBeInTheDocument();
-      expect(screen.getAllByText(/Read-only/).length).toBeGreaterThan(0);
+      // The page no longer describes Forge as globally read-only.
+      expect(screen.queryByText(/Forge is read-only/i)).toBeNull();
     });
 
     it('shows a not-found page for unknown addresses', async () => {

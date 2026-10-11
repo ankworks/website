@@ -38,4 +38,13 @@ export interface Env {
    * missing, banner images must be supplied as https URLs instead.
    */
   BANNER_IMAGES?: R2Bucket;
+  /**
+   * Repository names Forge must not serve about itself (comma separated).
+   *
+   * Used to keep the Forge implementation repository out of Forge's own
+   * listings, search, activity, and every scoped API route. Deployment
+   * configuration rather than a hardcoded constant. Hiding a repository here
+   * does NOT make it private on GitHub.
+   */
+  FORGE_SELF_REPO?: string;
 }

@@ -18,6 +18,7 @@
  */
 
 import { isValidRepoName, ORG_NAME } from '../shared/validation';
+import { isHiddenRepo, parseHiddenRepos } from '../shared/visibility';
 import type { FeaturedRepo } from '../shared/insights';
 import type { Env } from './env';
 import { cacheKeyFor, serveCached } from './cache';
@@ -70,8 +71,12 @@ export async function handleFeaturedList(
       .prepare('SELECT repo, position FROM featured_repos ORDER BY position ASC, repo ASC LIMIT ?1')
       .bind(MAX_FEATURED)
       .all<FeaturedRow>();
+    const hidden = parseHiddenRepos(env.FORGE_SELF_REPO);
     const items: FeaturedRepo[] = (rows.results ?? [])
       .filter((row) => isValidRepoName(row.repo))
+      // Visibility rule: a hidden repository can never be pinned, even if a row
+      // for it exists in D1.
+      .filter((row) => !isHiddenRepo(row.repo, hidden))
       .map((row, index) => ({ repo: row.repo, position: row.position ?? index }));
     return new Response(
       JSON.stringify({ items, configured: true, fetched_at: new Date().toISOString() }),

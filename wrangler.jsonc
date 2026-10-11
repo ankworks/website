@@ -27,5 +27,11 @@
     "not_found_handling": "single-page-application",
     // Only /api requests invoke the Worker; other requests are served directly from assets.
     "run_worker_first": ["/api", "/api/*"]
+  },
+  "vars": {
+    // The repository Forge is built from. It is excluded from Forge's own
+    // listings, search, activity, and scoped API routes (404). This is a
+    // presentation rule only: the repository stays public on GitHub.
+    "FORGE_SELF_REPO": "website"
   }
 }
