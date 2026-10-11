@@ -290,3 +290,15 @@ export const XIcon = (props: IconProps) => (
     <path d="M4 4l8 8M12 4l-8 8" />
   </Svg>
 );
+
+export const TrashIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M2.75 4.5h10.5M6 4.5V3.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 .75.75V4.5M4.25 4.5l.6 8.05c.03.42.38.75.8.75h4.7c.42 0 .77-.33.8-.75l.6-8.05M6.75 7.25v4M9.25 7.25v4" />
+  </Svg>
+);
+
+export const MoveIcon = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M2.25 4.75h5.5v5.5h-5.5zM8.25 8.25h5.5M11.25 5.75l2.5 2.5-2.5 2.5" />
+  </Svg>
+);

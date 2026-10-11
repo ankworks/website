@@ -18,6 +18,11 @@
  * GET /api/repos/:repo/commits?ref=&page=     commit history (paginated)
  * GET /api/repos/:repo/raw?ref=&path=         raw file download (attachment)
  *
+ * Directive C file management (authenticated, user-scoped):
+ * POST   /api/repos/:repo/files               create a file (optionally on a new branch)
+ * DELETE /api/repos/:repo/files               delete one file, verified by blob sha
+ * POST   /api/repos/:repo/files/move          rename or move, in one atomic commit
+ *
  * `ref` and `path` travel in query parameters, so ref names containing "/"
  * never need to be split out of a URL path. Every route is GET-only.
  */
@@ -53,6 +58,7 @@ import { handleOrganizationActivity, handleOrganizationIssues, handleRepositoryC
 import { logEvent } from './logging';
 import { requireFilePath, requirePath, requireRef, requireRepo } from './params';
 import { handleDiscussionRoute, isDiscussionRoute } from './discussions';
+import { handleFilesRoute, isFileRoute } from './files';
 import { handleReactionsRoute, isReactionsRoute } from './reactions';
 import { handleInsightRoute, isInsightAction, logInsightRequest, type InsightAction } from './insights';
 import {
@@ -439,6 +445,12 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
       return complete(await handleDiscussionRoute(path, request, env));
     }
     if (isReactionsRoute(path)) return complete(await handleReactionsRoute(path, request, env));
+
+    // Directive C: file management (create, delete, rename, move).
+    if (isFileRoute(request.method, path)) {
+      const filesMatch = /^\/api\/repos\/([^/]+)\/(files(?:\/move)?)$/.exec(path);
+      if (filesMatch) return complete(await handleFilesRoute(filesMatch[2] ?? '', filesMatch[1] ?? '', request, env));
+    }
 
     // Authenticated writes and compare (Milestone C): POST commit/branches,
     // GET compare. GET /branches passes through to the read-only list route.

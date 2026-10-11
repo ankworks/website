@@ -1,7 +1,6 @@
-import { Link, Navigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { explorerApi } from '../../api/explorer';
 import { useAsync } from '../../hooks/useAsync';
-import { useRepoPermissions } from '../../hooks/useRepoPermissions';
 import { countLines, formatBytes, shortSha } from '../../lib/format';
 import { COMMIT_MAX_BYTES } from '../../shared/changes';
 import { detectLanguage } from '../../shared/languages';
@@ -10,9 +9,10 @@ import { EXPLORER_LIMITS } from '../../shared/limits';
 import type { FileResponse } from '../../types';
 import Breadcrumbs from './Breadcrumbs';
 import BranchSelector from './BranchSelector';
-import { EditIcon, DownloadIcon, LinkIcon } from './icons';
+import { LinkIcon } from './icons';
 import MarkdownFileView from './MarkdownFileView';
 import SourceFileView from './SourceFileView';
+import FileActions from './FileActions';
 import { CopyButton, ErrorState, ExternalLink, Notice, Panel, Skeleton } from './ui';
 
 interface FileViewProps {
@@ -49,14 +49,13 @@ function FileContent({ file, repo, gitRef, path }: FileViewProps & { file: FileR
   // Permission detection drives only the shortcut in the action bar. The Edit
   // mode itself is always reachable and re-gates inside the commit workspace,
   // and the Worker re-verifies push access before any write.
-  const permissions = useRepoPermissions(repo);
   const rawUrl = explorerApi.rawUrl(repo, gitRef, path);
   const commitUrl = githubRepoLink(repo, 'commit', file.commit_sha);
   const permalink = () => `${window.location.origin}${blobPath(repo, file.commit_sha, path)}`;
   const isText = file.kind === 'text' && typeof file.content === 'string';
   const showRaw = file.kind !== 'symlink' && file.kind !== 'submodule' && file.size <= EXPLORER_LIMITS.RAW_MAX_BYTES;
+  // Only UTF-8 text within the commit size limit can be edited or rewritten.
   const editable = isText && file.size <= COMMIT_MAX_BYTES;
-  const editUrl = `${blobPath(repo, gitRef, path)}?view=edit`;
 
   return (
     <div className="space-y-4">
@@ -81,17 +80,6 @@ function FileContent({ file, repo, gitRef, path }: FileViewProps & { file: FileR
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {editable && permissions.canWrite && (
-              <Link
-                to={editUrl}
-                data-testid="edit-file-button"
-                title={`Edit ${fileName(path)} and commit to ${gitRef}`}
-                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
-              >
-                <EditIcon size={14} />
-                Edit file
-              </Link>
-            )}
             {isText && file.content !== undefined && (
               <CopyButton text={file.content} label={`Copy contents of ${fileName(path)}`} />
             )}
@@ -102,12 +90,20 @@ function FileContent({ file, repo, gitRef, path }: FileViewProps & { file: FileR
               idleLabel="Permalink"
               icon={<LinkIcon size={14} />}
             />
-            {showRaw && (
-              <a href={rawUrl} download={fileName(path)} className="btn-secondary-sm">
-                <DownloadIcon size={14} />
-                Raw
-              </a>
-            )}
+            {/*
+              Directive C: Raw / History / Copy path are always available; Edit,
+              Rename, Move, and Delete appear only for a verified member with
+              write access, and the Worker re-checks before every write.
+            */}
+            <FileActions
+              repo={repo}
+              gitRef={gitRef}
+              path={path}
+              blobSha={file.blob_sha ?? ''}
+              rawUrl={rawUrl}
+              showRaw={showRaw}
+              editable={editable}
+            />
             <ExternalLink href={file.html_url} className="btn-secondary-sm">
               GitHub
             </ExternalLink>

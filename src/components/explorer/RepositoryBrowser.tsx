@@ -1,6 +1,8 @@
 import { Suspense, lazy, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { explorerApi } from '../../api/explorer';
+import { useAuth } from '../../auth/AuthContext';
+import { useRepoPermissions } from '../../hooks/useRepoPermissions';
 import { useAsync } from '../../hooks/useAsync';
 import { formatBytes, formatDate, formatRelative, shortSha } from '../../lib/format';
 import { blobPath, githubRepoLink, parentPath, treePath } from '../../shared/routes';
@@ -8,7 +10,8 @@ import { EXPLORER_LIMITS } from '../../shared/limits';
 import type { DirectoryEntry } from '../../types';
 import Breadcrumbs from './Breadcrumbs';
 import BranchSelector from './BranchSelector';
-import { FileIcon, FolderIcon, SubmoduleIcon, SymlinkIcon } from './icons';
+import { newDirectoryPath, newFilePath } from './CreateDirectoryForm';
+import { FileIcon, FolderIcon, PlusIcon, SubmoduleIcon, SymlinkIcon } from './icons';
 import { ErrorState, ExternalLink, Notice, Panel, Skeleton, SkeletonRows, EmptyState } from './ui';
 
 const RepoDocs = lazy(() => import('./RepoDocs'));
@@ -88,6 +91,11 @@ function EntryIcon({ type }: { type: DirectoryEntry['type'] }) {
 
 function DirectoryListing({ repo, gitRef, path }: { repo: string; gitRef: string; path: string }) {
   const state = useAsync(`tree|${repo}|${gitRef}|${path}`, () => explorerApi.tree(repo, gitRef, path));
+  // Advisory gate: the Worker re-checks every write. Guests and non-members
+  // simply never see the create buttons.
+  const { status, isMember } = useAuth();
+  const permissions = useRepoPermissions(repo);
+  const canManage = status === 'authenticated' && isMember && permissions.loaded && permissions.canWrite;
 
   let body: ReactNode;
   if (state.status === 'loading' || state.status === 'idle') {
@@ -155,17 +163,31 @@ function DirectoryListing({ repo, gitRef, path }: { repo: string; gitRef: string
 
   return (
     <Panel aria-label={path ? `Contents of ${path}` : 'Repository contents'}>
-      {path !== '' && state.status === 'success' && (
-        <div className="flex items-center justify-between gap-3 border-b border-border bg-elevated/40 px-4 py-2 text-xs text-muted">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-elevated/40 px-4 py-2 text-xs text-muted">
+        {path !== '' && state.status === 'success' ? (
           <span className="truncate">
             Parent:{' '}
             <Link to={treePath(repo, gitRef, parentPath(path))} className="text-primary/90 hover:text-primary">
               {parentPath(path) || repo}
             </Link>
           </span>
+        ) : (
+          <span>{path === '' ? 'Repository root' : 'Directory'}</span>
+        )}
+        <span className="flex items-center gap-3">
           {state.data && <span>{state.data.entries.length} items</span>}
-        </div>
-      )}
+          {canManage && (
+            <>
+              <Link to={newFilePath(repo, gitRef, path)} className="btn-secondary-sm" data-testid="new-file-here">
+                <PlusIcon size={13} /> New file
+              </Link>
+              <Link to={newDirectoryPath(repo, gitRef, path)} className="btn-secondary-sm" data-testid="new-directory-here">
+                <PlusIcon size={13} /> New directory
+              </Link>
+            </>
+          )}
+        </span>
+      </div>
       {body}
     </Panel>
   );
