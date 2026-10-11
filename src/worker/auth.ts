@@ -206,7 +206,9 @@ function authorizeUrl(env: Env, redirectUri: string, state: string): string {
   url.searchParams.set('client_id', env.GITHUB_APP_CLIENT_ID ?? '');
   url.searchParams.set('redirect_uri', redirectUri);
   url.searchParams.set('state', state);
-  url.searchParams.set('scope', 'read:user');
+  // read:user for user profile; read:org for organization membership verification
+  // (required to see private membership via /user/memberships/orgs/{org})
+  url.searchParams.set('scope', 'read:user read:org');
   return url.toString();
 }
 
