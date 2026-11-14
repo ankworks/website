@@ -105,6 +105,21 @@ describe('ScrambleText', () => {
     vi.useRealTimers();
   });
 
+  it('settles in under half a second', () => {
+    vi.useFakeTimers();
+    stubReducedMotion(false);
+    const { container } = render(<ScrambleText text="Pull Requests" />);
+    const root = container.querySelector('[data-scramble-text]') as HTMLElement;
+    const output = () => container.querySelector('[data-scramble-output]')?.textContent ?? '';
+
+    act(() => {
+      fireEvent.pointerEnter(root);
+      vi.advanceTimersByTime(250);
+    });
+    expect(output()).toBe('Pull Requests');
+    vi.useRealTimers();
+  });
+
   it('does not animate when reduced motion is requested', () => {
     vi.useFakeTimers();
     stubReducedMotion(true);

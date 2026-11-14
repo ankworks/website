@@ -15,7 +15,7 @@ AnkWorks Forge is a read-only development platform for the public repositories o
 - **Pull requests** with organization-wide and repository-specific lists, state filters, detail and lifecycle status, labels, changed files, commits, conversation comments, review comments, and pagination.
 - **Responsive navigation**, dark-first palette, light theme support, keyboard focus states, loading, empty, and error states.
 - **Foundation** for the Forge experience: dark-first palette, dense Forge-style layout, responsive navigation.
-- **Scrambled-text titles**: page headings and the wordmark decode from random glyphs (`src/components/ScrambleText.tsx`), re-running on hover/focus. The final text stays in the accessibility tree and on the page, the string never reflows, and the effect is skipped under `prefers-reduced-motion`.
+- **Scrambled-text titles**: page headings and the wordmark decode from random glyphs (`src/components/ScrambleText.tsx`) in about a third of a second, re-running on hover/focus. The final text stays in the accessibility tree and on the page, the string never reflows, and the effect is skipped under `prefers-reduced-motion`.
 - **Pixel cursor trail**: a decorative canvas layer draws a fading, grid-snapped trail of squares in the theme accent colour behind the real pointer (`src/hooks/usePixelCursor.ts`). It is `aria-hidden` with `pointer-events: none`, never replaces the native cursor, is skipped for touch/coarse pointers and `prefers-reduced-motion: reduce`, and creates no runtime stylesheet (CSP-safe).
 
 ### Milestone B — GitHub authentication and sessions

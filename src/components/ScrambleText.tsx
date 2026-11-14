@@ -20,6 +20,15 @@ import { useEffect, useRef, useState } from 'react';
 /** Glyphs used while scrambling. No whitespace, so words keep their shape. */
 const GLYPHS = '!#$%&*+-/<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
+/**
+ * Tuning. The reveal is meant to read as a quick flicker, not a loading state,
+ * so it settles in about a third of a second and just a few frames.
+ */
+/** Frame interval in ms (16ms ≈ one 60fps frame). */
+const FRAME_MS = 16;
+/** Total frames before every character has settled. */
+const TOTAL_FRAMES = 12;
+
 function scrambleFrame(text: string, progress: number): string {
   let out = '';
   for (let index = 0; index < text.length; index += 1) {
@@ -79,11 +88,13 @@ export default function ScrambleText({ text, className = '', as = 'span', replay
     const tick = () => {
       if (!mounted.current) return;
       frame.current += 1;
-      // Settle a few characters per tick, all of them within ~30 ticks.
-      const progress = Math.ceil((frame.current / 30) * total);
+      // Front-loaded settle: most characters land in the first few frames, so
+      // the word is readable almost immediately and only the tail churns.
+      const eased = 1 - Math.pow(1 - frame.current / TOTAL_FRAMES, 3);
+      const progress = Math.min(total, Math.ceil(eased * total));
       setShown(scrambleFrame(text, progress));
-      if (progress < total) {
-        timer.current = window.setTimeout(tick, 34);
+      if (frame.current < TOTAL_FRAMES || progress < total) {
+        timer.current = window.setTimeout(tick, FRAME_MS);
       } else {
         setShown(text);
       }
