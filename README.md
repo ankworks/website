@@ -206,6 +206,7 @@ Sign-in failures are never silent. Everything below is either logged with `stage
 | Banner: *Sign-in could not be verified* (`OAUTH_STATE_MISMATCH`) | State cookie missing/mismatched (tab open >10 min, cookies blocked, or the OAuth app was switched) | Sign in again in a fresh tab |
 | Banner: *GitHub rejected the sign-in* (`OAUTH_EXCHANGE_FAILED`) | Code reused/expired, or client id/secret wrong for this deployment | Re-check the OAuth app secrets |
 | `GET /api/auth/login` returns 503 `AUTH_NOT_CONFIGURED` | Body lists the missing secrets and the exact `callbackUrl` to register | Set the named secrets |
+| "Sign in unavailable" in the nav instead of a sign-in button | The Worker has no OAuth client id (`authEnabled: false`) | Run `wrangler secret put GITHUB_APP_CLIENT_ID` / `GITHUB_APP_CLIENT_SECRET` / `SESSION_ENCRYPTION_KEY`, then redeploy |
 | Signed in, but no Edit/Comment controls | `GET /api/auth/membership` is not `member` — the account menu shows the reason | Add the account to the org, or grant `read:org` by signing out/in |
 | Admin controls refused for an org admin | Administration needs `FORGE_ADMIN_LOGINS`, a `forge_admins` row, or the organization-owner role | Add the login to the allowlist |
 
