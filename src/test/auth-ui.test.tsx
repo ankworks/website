@@ -68,13 +68,17 @@ describe('AuthMenu', () => {
     expect(link.textContent).toContain('Sign in with GitHub');
   });
 
-  it('renders nothing actionable when auth is not configured', async () => {
+  it('shows a disabled, explained control when auth is not configured', async () => {
     fetchMock.mockResolvedValueOnce(json({ authenticated: false, user: null, expiresAt: null, authEnabled: false }));
     renderMenu();
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    // A missing Worker secret must NOT look like a missing feature: the control
+    // stays visible, disabled, and says sign-in is unavailable.
+    const unavailable = await screen.findByTestId('sign-in-unavailable');
+    expect(unavailable.getAttribute('aria-disabled')).toBe('true');
+    expect(unavailable.textContent).toContain('Sign in unavailable');
+    expect(unavailable.getAttribute('title')).toContain('not configured');
     expect(screen.queryByTestId('sign-in-link')).toBeNull();
     expect(screen.queryByTestId('auth-menu')).toBeNull();
-    expect(screen.queryByTestId('auth-menu-skeleton')).toBeNull();
   });
 
   it('renders the account menu for a signed-in user', async () => {

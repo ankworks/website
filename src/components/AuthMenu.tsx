@@ -3,7 +3,9 @@
  *
  * - Signed out with auth enabled: a plain link to `/api/auth/login` (a full
  *   navigation to the Worker's OAuth redirect — no tokens touch JS).
- * - Signed out with auth disabled: nothing to click (no fake affordances).
+ * - Signed out with auth disabled: the control is still rendered, but disabled
+ *   and explained. Hiding it entirely made a missing Worker secret look like a
+ *   missing feature: the user could not find sign-in and had nothing to act on.
  * - Signed in: avatar + login + Sign out.
  */
 
@@ -23,7 +25,18 @@ export default function AuthMenu() {
   }
 
   if (status !== 'authenticated') {
-    if (!authEnabled) return null;
+    if (!authEnabled) {
+      return (
+        <span
+          data-testid="sign-in-unavailable"
+          title="GitHub sign-in is not configured for this deployment (missing Worker secrets)."
+          aria-disabled="true"
+          className="inline-flex h-8 cursor-not-allowed items-center gap-1.5 rounded-md border border-border bg-surface/60 px-2.5 text-sm font-medium text-muted"
+        >
+          Sign in unavailable
+        </span>
+      );
+    }
     return (
       <a
         href="/api/auth/login"
