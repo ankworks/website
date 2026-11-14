@@ -10,7 +10,7 @@
 import { useAuth } from '../auth/AuthContext';
 
 export default function AuthMenu() {
-  const { status, user, authEnabled, logout } = useAuth();
+  const { status, user, authEnabled, logout, membership, isMember, membershipMessage } = useAuth();
 
   if (status === 'loading') {
     return (
@@ -51,6 +51,12 @@ export default function AuthMenu() {
         <p className="px-2 py-1.5 text-xs text-muted">
           Signed in as <span className="font-medium text-text">{user?.login}</span>
         </p>
+        {/* Why write controls are absent is a membership fact, not a mystery. */}
+        {membership.status === 'ready' && !isMember ? (
+          <p data-testid="membership-hint" className="mx-2 mb-1 rounded border border-border bg-elevated px-2 py-1.5 text-[11px] leading-4 text-muted">
+            {membershipMessage}
+          </p>
+        ) : null}
         <button
           type="button"
           data-testid="sign-out-button"

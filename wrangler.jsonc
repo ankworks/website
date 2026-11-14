@@ -11,10 +11,10 @@
   // Enables Worker Previews (`npx wrangler preview`), required by Workers Builds for pull requests.
   // Empty block: no preview-specific overrides; the top-level configuration applies.
   "previews": {},
-  // Production custom domain. Requires the ankb.qzz.io zone in the same Cloudflare account.
+  // Production custom domain. Requires the ankworks.bond zone in the same Cloudflare account.
   "routes": [
     {
-      "pattern": "works.ankb.qzz.io",
+      "pattern": "projects.ankworks.bond",
       "custom_domain": true
     }
   ],

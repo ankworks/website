@@ -25,6 +25,8 @@ export interface Env {
   TURNSTILE_SITE_KEY?: string;
   /** Resend API key for moderation outcome emails (optional). */
   RESEND_API_KEY?: string;
+  /** Envelope sender for moderation email, e.g. "AnkWorks Forge <no-reply@projects.ankworks.bond>". */
+  RESEND_FROM?: string;
   /** Inbox that receives moderation notifications (optional). */
   MODERATION_NOTIFY_EMAIL?: string;
   /**

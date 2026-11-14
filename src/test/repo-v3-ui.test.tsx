@@ -40,7 +40,7 @@ function repoPayload(overrides: Record<string, unknown> = {}) {
     default_branch: 'main',
     owner: { login: 'ankworks' },
     license: 'MIT',
-    homepage: 'https://works.ankb.qzz.io',
+    homepage: 'https://projects.ankworks.bond',
     has_wiki: true,
     has_issues: true,
     has_discussions: true,

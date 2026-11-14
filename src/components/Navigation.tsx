@@ -1,6 +1,7 @@
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import AuthMenu from './AuthMenu';
 import { MenuIcon } from './explorer/icons';
+import ScrambleText from './ScrambleText';
 import ThemeToggle from './ThemeToggle';
 
 type NavItem = { label: string; to: string; section: 'dashboard' | 'explore' | 'repositories' | 'issues' | 'pulls' | 'about' };
@@ -32,8 +33,8 @@ export default function Navigation() {
       <div className="mx-auto flex min-h-14 max-w-7xl items-center gap-3 px-4 sm:px-6">
         <Link to="/" aria-label="AnkWorks Forge home" className="flex shrink-0 items-center gap-2 rounded-md focus-visible:ring-2 focus-visible:ring-primary/60">
           <img src="/branding/ankworks-logo.webp" alt="" width={28} height={28} className="h-7 w-7 rounded-md object-cover" />
-          <span className="font-semibold tracking-tight text-text">AnkWorks</span>
-          <span className="hidden border-l border-border pl-2 text-sm text-muted sm:inline">Forge</span>
+          <ScrambleText text="AnkWorks" className="font-semibold tracking-tight text-text" />
+          <ScrambleText text="Forge" className="hidden border-l border-border pl-2 text-sm text-muted sm:inline" />
         </Link>
 
         <nav aria-label="Primary navigation" className="ml-2 hidden items-center gap-0.5 xl:flex">

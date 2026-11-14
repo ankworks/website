@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import ScrambleText from '../components/ScrambleText';
 import { explorerApi } from '../api/explorer';
 import { featuredApi } from '../api/featured';
 import { getRepositories } from '../api/github';
@@ -40,7 +41,7 @@ export default function OrganizationPage() {
             <Badge>Public</Badge>
           </div>
           <h1 id="org-heading" className="mt-1 text-2xl font-semibold tracking-tight text-text sm:text-3xl">
-            {profile?.name || 'AnkWorks'}
+            <ScrambleText text={profile?.name || 'AnkWorks'} as="span" />
           </h1>
           <p className="mt-0.5 font-mono text-sm text-muted">@ankworks</p>
           {profile?.description ? (

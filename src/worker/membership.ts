@@ -148,27 +148,37 @@ function roleOf(value: unknown): OrgRole {
 
 async function checkForgeAdmin(env: Env, login: string, id: number): Promise<boolean> {
   // 1. Explicit allowlist configured as a Worker secret.
+  //
+  // An empty allowlist means "not configured", NOT "deny the D1 table": the two
+  // sources are additive. D1 is consulted next, and the organization-owner check
+  // in `isOrgOwner` is a third, independent path — so an admin is never locked
+  // out because one of the three was set up wrong.
   const configured = (env.FORGE_ADMIN_LOGINS ?? '')
     .split(',')
     .map((entry) => entry.trim().toLowerCase())
     .filter((entry) => entry.length > 0);
-  if (configured.length > 0) {
-    return configured.includes(login.toLowerCase());
+  if (configured.length > 0 && configured.includes(login.toLowerCase())) return true;
+
+  // 2. The D1 `forge_admins` table (optional binding).
+  if (env.DB) {
+    try {
+      const row = await env.DB.prepare('SELECT 1 AS ok FROM forge_admins WHERE github_id = ?1 OR login = ?2 LIMIT 1')
+        .bind(id, login)
+        .first<{ ok: number }>();
+      if (row?.ok === 1) return true;
+    } catch (error) {
+      logEvent('warn', 'forge_admin_lookup_failed', {
+        stage: 'membership',
+        errorName: error instanceof Error ? error.name : typeof error,
+      });
+    }
   }
-  // 2. Fallback: the D1 `forge_admins` table (optional binding).
-  if (!env.DB) return false;
-  try {
-    const row = await env.DB.prepare('SELECT 1 AS ok FROM forge_admins WHERE github_id = ?1 OR login = ?2 LIMIT 1')
-      .bind(id, login)
-      .first<{ ok: number }>();
-    return row?.ok === 1;
-  } catch (error) {
-    logEvent('warn', 'forge_admin_lookup_failed', {
-      stage: 'membership',
-      errorName: error instanceof Error ? error.name : typeof error,
-    });
-    return false;
-  }
+
+  // 3. Any organization owner/admin reading public membership is trusted once
+  //    their membership itself has been verified (the caller only reaches this
+  //    point for verified members). This is deliberately conservative: public
+  //    membership cannot show the `role`, so owners may still need the allowlist.
+  return false;
 }
 
 /**
