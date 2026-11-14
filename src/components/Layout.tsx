@@ -1,11 +1,15 @@
 import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { usePixelCursor } from '../hooks';
 import { CommandPalette } from './SearchPage';
 import Navigation from './Navigation';
 import Footer from './Footer';
 
 export default function Layout() {
   const { pathname, hash } = useLocation();
+
+  // Decorative retro flourish over the real (untouched) pointer.
+  usePixelCursor();
 
   // New pages start at the top; in-page anchors (README headings, #L12) keep their position.
   useEffect(() => {
