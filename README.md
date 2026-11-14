@@ -189,6 +189,7 @@ Tests mock GitHub responses and do not require live credentials. They cover Work
 | `GITHUB_TOKEN` | Read-only upstream calls (rate limits) | Optional |
 | `GITHUB_APP_CLIENT_ID` / `GITHUB_APP_CLIENT_SECRET` | OAuth sign-in (B) | Optional — sign-in off without them |
 | `SESSION_ENCRYPTION_KEY` (32+ chars) | Session cookie encryption (B) | Optional — sign-in off without it |
+| `OAUTH_REDIRECT_URI` | Explicit OAuth callback URL | Optional — defaults to `https://<request host>/api/auth/callback` |
 | `DB` (D1, `migrations/0001_guest_issues.sql`) | Guest issues (E) | Optional — guest form off without it |
 | `TURNSTILE_SECRET_KEY` / `TURNSTILE_SITE_KEY` | Guest captcha (E) | Optional — guest form off without them |
 | `RESEND_API_KEY` / `MODERATION_NOTIFY_EMAIL` / `RESEND_FROM` | Moderation emails (E) | Optional (best-effort); `RESEND_FROM` must be a verified Resend sender |
@@ -203,7 +204,7 @@ Sign-in failures are never silent. Everything below is either logged with `stage
 | --- | --- | --- |
 | Sign-in button does nothing, `/api/auth/session` still `authEnabled: true` | Callback reached, session not created | Check `wrangler tail` for `auth_callback_failed` |
 | Banner: *OAuth callback URL is not registered* (`OAUTH_REDIRECT_MISMATCH`) | GitHub OAuth app callback ≠ the deployed origin | Register `https://<domain>/api/auth/callback` exactly |
-| GitHub shows *The `redirect_uri` is not associated with this application* | GitHub refused before Forge was ever reached: the Authorization callback URL on the OAuth app does not match | Open `GET /api/auth/diagnostics` and paste its `callbackUrl` into the OAuth app verbatim (check the scheme, the `www.`, and that there is no trailing slash) |
+| GitHub shows *The `redirect_uri` is not associated with this application* | GitHub refused before Forge was ever reached: the Authorization callback URL on the OAuth app does not match | Open `GET /api/auth/diagnostics` and paste its `callbackUrl` into the OAuth app verbatim (check the scheme, the `www.`, and that there is no trailing slash). If the deployment's public URL differs from the request origin, set `OAUTH_REDIRECT_URI` |
 | Banner: *Sign-in could not be verified* (`OAUTH_STATE_MISMATCH`) | State cookie missing/mismatched (tab open >10 min, cookies blocked, or the OAuth app was switched) | Sign in again in a fresh tab |
 | Banner: *GitHub rejected the sign-in* (`OAUTH_EXCHANGE_FAILED`) | Code reused/expired, or client id/secret wrong for this deployment | Re-check the OAuth app secrets |
 | `GET /api/auth/login` returns 503 `AUTH_NOT_CONFIGURED` | Body lists the missing secrets and the exact `callbackUrl` to register | Set the named secrets |

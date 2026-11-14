@@ -518,3 +518,48 @@ describe('GET /api/auth/diagnostics', () => {
     expect(response.status).toBe(405);
   });
 });
+
+/**
+ * The callback URL must match the registered OAuth app byte for byte. GitHub
+ * compares it exactly, so scheme handling matters: an `http:` request origin
+ * must never leak a non-TLS callback into the redirect.
+ */
+describe('OAuth callback URL', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('pins https for a proxied http request origin', async () => {
+    const response = await handleApiRequest(
+      new Request('http://projects.ankworks.bond/api/auth/login'),
+      env()
+    );
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get('Location') ?? '');
+    // The probe URL above is what GitHub validates; it must be the https form.
+    expect(location.searchParams.get('redirect_uri')).toBe('https://projects.ankworks.bond/api/auth/callback');
+  });
+
+  it('keeps http for local development hosts', async () => {
+    const response = await handleApiRequest(new Request('http://localhost:8787/api/auth/login'), env());
+    const location = new URL(response.headers.get('Location') ?? '');
+    expect(location.searchParams.get('redirect_uri')).toBe('http://localhost:8787/api/auth/callback');
+  });
+
+  it('honours an explicit OAUTH_REDIRECT_URI override', async () => {
+    const override = 'https://projects.ankworks.bond/api/auth/callback';
+    const response = await handleApiRequest(
+      new Request('https://preview.example.test/api/auth/login'),
+      env({ OAUTH_REDIRECT_URI: override })
+    );
+    const location = new URL(response.headers.get('Location') ?? '');
+    expect(location.searchParams.get('redirect_uri')).toBe(override);
+  });
+
+  it('reports the same URL from the diagnostics endpoint', async () => {
+    const response = await handleApiRequest(new Request('http://projects.ankworks.bond/api/auth/diagnostics'), env());
+    const body = (await response.json()) as { callbackUrl: string };
+    expect(body.callbackUrl).toBe('https://projects.ankworks.bond/api/auth/callback');
+  });
+});

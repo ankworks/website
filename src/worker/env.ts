@@ -13,6 +13,8 @@ export interface Env {
   GITHUB_APP_CLIENT_SECRET?: string;
   /** 32+ character secret used to AES-GCM encrypt session cookies. */
   SESSION_ENCRYPTION_KEY?: string;
+  /** Explicit OAuth callback URL when the public URL differs from the request origin. */
+  OAUTH_REDIRECT_URI?: string;
   /** GitHub App id (numeric). Required from Milestone C for app-actor writes. */
   GITHUB_APP_ID?: string;
   /** GitHub App PEM private key. Server-side only; never used for user writes. */

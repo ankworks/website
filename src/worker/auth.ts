@@ -197,8 +197,34 @@ function methodNotAllowed(allow: string): Response {
 // OAuth flow
 // ---------------------------------------------------------------------------
 
-function redirectUriFor(request: Request): string {
-  return new URL('/api/auth/callback', request.url).toString();
+/**
+ * The OAuth callback URL.
+ *
+ * GitHub compares this string byte-for-byte against the OAuth app's registered
+ * callback, including the trailing slash. `new URL('/api/auth/callback', url)`
+ * is correct for a plain origin, but it inherits the request scheme — and a
+ * request that arrives over `http:` (behind a proxy that did not set
+ * `X-Forwarded-Proto`, or a local `wrangler dev` session) produced
+ * `http://…/callback`, which GitHub rejects with "The redirect_uri is not
+ * associated with this application."
+ *
+ * Production is always served over HTTPS, so the scheme is pinned unless an
+ * explicit override is configured for a non-TLS deployment.
+ */
+function redirectUriFor(request: Request, env?: Env): string {
+  const url = new URL('/api/auth/callback', request.url);
+  const override = env?.OAUTH_REDIRECT_URI?.trim();
+  if (override) {
+    // Escape hatch for a deployment whose public URL differs from the origin
+    // the Worker sees (custom domain, preview host, or a path prefix).
+    return override;
+  }
+  if (url.protocol === 'http:' && !isLocalHost(url.hostname)) url.protocol = 'https:';
+  return url.toString();
+}
+
+function isLocalHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname.endsWith('.local');
 }
 
 /**
@@ -215,7 +241,7 @@ function handleDiagnostics(request: Request, env: Env): Response {
   return authJson({
     authEnabled: configured,
     requestOrigin: url.origin,
-    callbackUrl: redirectUriFor(request),
+    callbackUrl: redirectUriFor(request, env),
     clientId: env.GITHUB_APP_CLIENT_ID ?? null,
     scope: 'read:user read:org',
     secrets: {
@@ -333,7 +359,7 @@ function authMisconfigured(env: Env, request: Request): Response {
       message: `GitHub sign-in is not configured for this deployment. Missing: ${missing.join(', ')}.`,
       status: 503,
       missing,
-      callbackUrl: redirectUriFor(request),
+      callbackUrl: redirectUriFor(request, env),
     },
     503
   );
@@ -343,7 +369,7 @@ function handleLogin(request: Request, env: Env): Response {
   if (request.method !== 'GET') return methodNotAllowed('GET');
   if (!authConfigured(env)) return authMisconfigured(env, request);
   const state = b64urlEncode(crypto.getRandomValues(new Uint8Array(32)));
-  const location = authorizeUrl(env, redirectUriFor(request), state);
+  const location = authorizeUrl(env, redirectUriFor(request, env), state);
   return redirect(location, [
     cookieString(OAUTH_STATE_COOKIE, state, OAUTH_STATE_TTL_SECONDS, '/api/auth'),
   ]);
@@ -378,7 +404,7 @@ async function handleCallback(request: Request, env: Env): Promise<Response> {
 
   let token: string;
   try {
-    token = await exchangeCode(env, code, redirectUriFor(request));
+    token = await exchangeCode(env, code, redirectUriFor(request, env));
   } catch (error) {
     // Token exchange failures (rejected code, redirect URI mismatch, upstream
     // outage) all land back on the app — this is a top-level navigation, so the
