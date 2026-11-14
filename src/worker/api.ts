@@ -373,7 +373,14 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
     // Auth routes handle their own method gating (login/callback/session are
     // GET, logout is POST) and manage session cookies — dispatch before the
     // GET-only rule so their errors surface through the shared handler.
-    if (path === '/api/auth/login' || path === '/api/auth/callback' || path === '/api/auth/session' || path === '/api/auth/logout' || path === '/api/auth/permissions') {
+    if (
+      path === '/api/auth/login' ||
+      path === '/api/auth/callback' ||
+      path === '/api/auth/session' ||
+      path === '/api/auth/logout' ||
+      path === '/api/auth/permissions' ||
+      path === '/api/auth/diagnostics'
+    ) {
       return complete(await handleAuthRoute(request, env));
     }
 

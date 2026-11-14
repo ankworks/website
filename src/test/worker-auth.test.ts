@@ -479,3 +479,42 @@ describe('auth diagnostics', () => {
     expect(new URL(response.headers.get('Location') ?? '').searchParams.get('auth_error')).toBe('OAUTH_EXCHANGE_FAILED');
   });
 });
+
+/** GET /api/auth/diagnostics: names the callback URL without leaking secrets. */
+describe('GET /api/auth/diagnostics', () => {
+  it('reports the callback URL, client id and secret presence', async () => {
+    const response = await handleApiRequest(request('/api/auth/diagnostics'), env());
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.authEnabled).toBe(true);
+    expect(body.callbackUrl).toBe(`${ORIGIN}/api/auth/callback`);
+    expect(body.requestOrigin).toBe(ORIGIN);
+    expect(body.clientId).toBe(CLIENT_ID);
+    expect(body.scope).toBe('read:user read:org');
+    expect(body.secrets).toEqual({
+      clientId: true,
+      clientSecret: true,
+      sessionKey: true,
+      sessionKeyLength: SESSION_KEY.length,
+    });
+    // Presence flags only — the secret values never appear.
+    expect(JSON.stringify(body)).not.toContain(CLIENT_SECRET);
+    expect(JSON.stringify(body)).not.toContain(SESSION_KEY);
+  });
+
+  it('reports which pieces are missing', async () => {
+    const response = await handleApiRequest(
+      request('/api/auth/diagnostics'),
+      env({ GITHUB_APP_CLIENT_ID: undefined })
+    );
+    const body = (await response.json()) as { authEnabled: boolean; secrets: Record<string, unknown>; clientId: null };
+    expect(body.authEnabled).toBe(false);
+    expect(body.clientId).toBeNull();
+    expect(body.secrets.clientId).toBe(false);
+  });
+
+  it('rejects non-GET methods', async () => {
+    const response = await handleApiRequest(request('/api/auth/diagnostics', { method: 'POST' }), env());
+    expect(response.status).toBe(405);
+  });
+});

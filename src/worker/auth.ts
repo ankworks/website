@@ -201,6 +201,32 @@ function redirectUriFor(request: Request): string {
   return new URL('/api/auth/callback', request.url).toString();
 }
 
+/**
+ * GET /api/auth/diagnostics
+ *
+ * Reports what this deployment believes its OAuth configuration is, so the
+ * callback-URL question can be answered with a URL instead of another round of
+ * guessing. Secrets are reduced to booleans/lengths — never echoed.
+ */
+function handleDiagnostics(request: Request, env: Env): Response {
+  if (request.method !== 'GET') return methodNotAllowed('GET');
+  const url = new URL(request.url);
+  const configured = authConfigured(env);
+  return authJson({
+    authEnabled: configured,
+    requestOrigin: url.origin,
+    callbackUrl: redirectUriFor(request),
+    clientId: env.GITHUB_APP_CLIENT_ID ?? null,
+    scope: 'read:user read:org',
+    secrets: {
+      clientId: Boolean(env.GITHUB_APP_CLIENT_ID),
+      clientSecret: Boolean(env.GITHUB_APP_CLIENT_SECRET),
+      sessionKey: Boolean(env.SESSION_ENCRYPTION_KEY),
+      sessionKeyLength: env.SESSION_ENCRYPTION_KEY?.length ?? 0,
+    },
+  });
+}
+
 function authorizeUrl(env: Env, redirectUri: string, state: string): string {
   const url = new URL('https://github.com/login/oauth/authorize');
   url.searchParams.set('client_id', env.GITHUB_APP_CLIENT_ID ?? '');
@@ -485,6 +511,8 @@ export async function handleAuthRoute(request: Request, env: Env): Promise<Respo
       return handleLogout(request);
     case '/api/auth/permissions':
       return handlePermissions(request, env);
+    case '/api/auth/diagnostics':
+      return handleDiagnostics(request, env);
     default:
       return errorResponse(404, 'NOT_FOUND', 'API endpoint not found.');
   }
