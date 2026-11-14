@@ -241,8 +241,17 @@ async function exchangeCode(env: Env, code: string, redirectUri: string): Promis
   }
   const record = (data ?? {}) as Record<string, unknown>;
   if (typeof record.access_token !== 'string' || record.access_token.length === 0) {
-    logEvent('warn', 'auth_exchange_rejected', { error: typeof record.error === 'string' ? record.error : 'missing_token' });
-    throw new UpstreamError(401, 'OAUTH_EXCHANGE_FAILED', 'GitHub rejected the OAuth credentials.');
+    // `incorrect_client_credentials` / `redirect_uri_mismatch` / `bad_verification_code`
+    // are the three failures that actually happen after a domain move or an
+    // expired code. They are logged AND surfaced: a generic "rejected" is what
+    // makes this class of bug invisible.
+    const code = typeof record.error === 'string' ? record.error : 'missing_token';
+    logEvent('warn', 'auth_exchange_rejected', { error: code });
+    throw new UpstreamError(
+      401,
+      code === 'redirect_uri_mismatch' ? 'OAUTH_REDIRECT_MISMATCH' : 'OAUTH_EXCHANGE_FAILED',
+      `GitHub rejected the OAuth credentials (${code}).`
+    );
   }
   return record.access_token;
 }
@@ -276,14 +285,37 @@ async function fetchGitHubUser(token: string): Promise<AuthUser> {
   };
 }
 
+/**
+ * Diagnostic for a deployment whose sign-in is misconfigured.
+ *
+ * Names the missing secret(s) — never their values — and the exact callback URL
+ * that must be registered on the GitHub OAuth app. A bare 503 tells an operator
+ * nothing, which is how a sign-in bug survives for weeks; this does not.
+ */
+function authMisconfigured(env: Env, request: Request): Response {
+  const missing: string[] = [];
+  if (!env.GITHUB_APP_CLIENT_ID) missing.push('GITHUB_APP_CLIENT_ID');
+  if (!env.GITHUB_APP_CLIENT_SECRET) missing.push('GITHUB_APP_CLIENT_SECRET');
+  if (!env.SESSION_ENCRYPTION_KEY) missing.push('SESSION_ENCRYPTION_KEY');
+  else if (env.SESSION_ENCRYPTION_KEY.length < MIN_ENCRYPTION_KEY_LENGTH) {
+    missing.push(`SESSION_ENCRYPTION_KEY (shorter than ${MIN_ENCRYPTION_KEY_LENGTH} characters)`);
+  }
+  logEvent('warn', 'auth_not_configured', { stage: 'auth', missing: missing.join(',') });
+  return authJson(
+    {
+      error: 'AUTH_NOT_CONFIGURED',
+      message: `GitHub sign-in is not configured for this deployment. Missing: ${missing.join(', ')}.`,
+      status: 503,
+      missing,
+      callbackUrl: redirectUriFor(request),
+    },
+    503
+  );
+}
+
 function handleLogin(request: Request, env: Env): Response {
   if (request.method !== 'GET') return methodNotAllowed('GET');
-  if (!authConfigured(env)) {
-    return authJson(
-      { error: 'AUTH_NOT_CONFIGURED', message: 'GitHub sign-in is not configured for this deployment.', status: 503 },
-      503
-    );
-  }
+  if (!authConfigured(env)) return authMisconfigured(env, request);
   const state = b64urlEncode(crypto.getRandomValues(new Uint8Array(32)));
   const location = authorizeUrl(env, redirectUriFor(request), state);
   return redirect(location, [
@@ -292,7 +324,11 @@ function handleLogin(request: Request, env: Env): Response {
 }
 
 /** Failure codes surfaced via `?auth_error=` on the redirect back to the app. */
-type CallbackFailure = 'OAUTH_STATE_MISMATCH' | 'OAUTH_EXCHANGE_FAILED' | 'OAUTH_USER_FAILED';
+type CallbackFailure =
+  | 'OAUTH_STATE_MISMATCH'
+  | 'OAUTH_EXCHANGE_FAILED'
+  | 'OAUTH_REDIRECT_MISMATCH'
+  | 'OAUTH_USER_FAILED';
 
 function callbackFailure(request: Request, code: CallbackFailure, clearState: boolean): Response {
   logEvent('warn', 'auth_callback_failed', { code });
@@ -308,12 +344,7 @@ async function handleCallback(request: Request, env: Env): Promise<Response> {
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
   const stateCookie = readCookie(request, OAUTH_STATE_COOKIE);
-  if (!authConfigured(env)) {
-    return authJson(
-      { error: 'AUTH_NOT_CONFIGURED', message: 'GitHub sign-in is not configured for this deployment.', status: 503 },
-      503
-    );
-  }
+  if (!authConfigured(env)) return authMisconfigured(env, request);
   // CSRF: both values must exist and match exactly. Fail closed.
   if (!state || !stateCookie || state !== stateCookie || !code) {
     return callbackFailure(request, 'OAUTH_STATE_MISMATCH', Boolean(stateCookie));
@@ -322,10 +353,14 @@ async function handleCallback(request: Request, env: Env): Promise<Response> {
   let token: string;
   try {
     token = await exchangeCode(env, code, redirectUriFor(request));
-  } catch {
-    // Token exchange failures (rejected code OR upstream outage) both land on
-    // the app with a generic error code — this is a top-level navigation.
-    return callbackFailure(request, 'OAUTH_EXCHANGE_FAILED', true);
+  } catch (error) {
+    // Token exchange failures (rejected code, redirect URI mismatch, upstream
+    // outage) all land back on the app — this is a top-level navigation, so the
+    // reason has to travel in the URL or it is lost.
+    const reason = error instanceof UpstreamError && error.code === 'OAUTH_REDIRECT_MISMATCH'
+      ? 'OAUTH_REDIRECT_MISMATCH'
+      : 'OAUTH_EXCHANGE_FAILED';
+    return callbackFailure(request, reason, true);
   }
 
   let user: AuthUser;

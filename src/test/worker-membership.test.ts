@@ -260,3 +260,49 @@ describe('assertMemberWrite (organization-only writes)', () => {
     await expect(assertMemberWrite(session(), { ASSETS: {} as Fetcher } as Env, 'test')).resolves.toBeUndefined();
   });
 });
+
+/**
+ * Admin sources are additive. A configured allowlist that does not name the
+ * user must not suppress the D1 table — that "return false" was how an admin
+ * could stay locked out even after being added to `forge_admins`.
+ */
+describe('forge admin sources are additive', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    clearMembershipCache();
+  });
+
+  it('still consults the D1 table when an allowlist is configured but does not match', async () => {
+    const fetchMock = stub({ '/user/memberships/orgs/ankworks': () => json({ state: 'active', role: 'member' }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const bind = vi.fn(() => ({ first: async () => ({ ok: 1 }) }));
+    const prepare = vi.fn(() => ({ bind }));
+    const gate = await requireForgeAdmin(session(), {
+      ASSETS: {} as Fetcher,
+      FORGE_ADMIN_LOGINS: 'someoneelse',
+      DB: { prepare } as unknown as Env['DB'],
+    } as Env);
+
+    expect(prepare).toHaveBeenCalled();
+    expect(gate.granted).toBe(true);
+    expect(gate.status.isForgeAdmin).toBe(true);
+  });
+
+  it('denies admin when neither the allowlist nor D1 names the user', async () => {
+    const fetchMock = stub({ '/user/memberships/orgs/ankworks': () => json({ state: 'active', role: 'member' }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const gate = await requireForgeAdmin(session(), {
+      ASSETS: {} as Fetcher,
+      FORGE_ADMIN_LOGINS: 'someoneelse',
+      DB: { prepare: () => ({ bind: () => ({ first: async () => null }) }) } as unknown as Env['DB'],
+    } as Env);
+
+    expect(gate.granted).toBe(false);
+    expect(gate.status.isForgeAdmin).toBe(false);
+    // The user is still a verified member: only administration is refused.
+    expect(gate.status.isMember).toBe(true);
+  });
+});

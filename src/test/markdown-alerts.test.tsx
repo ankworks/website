@@ -240,9 +240,9 @@ describe('existing Markdown surfaces keep working', () => {
   });
 
   it('renders strikethrough and autolinks from GFM', () => {
-    const { container } = renderReadme('~~gone~~ and https://works.ankb.qzz.io\n');
+    const { container } = renderReadme('~~gone~~ and https://projects.ankworks.bond\n');
     expect(container.querySelector('del')?.textContent).toBe('gone');
-    const link = Array.from(container.querySelectorAll('a')).find((entry) => entry.getAttribute('href') === 'https://works.ankb.qzz.io');
+    const link = Array.from(container.querySelectorAll('a')).find((entry) => entry.getAttribute('href') === 'https://projects.ankworks.bond');
     expect(link).toBeTruthy();
     expect(link?.getAttribute('rel')).toContain('noopener');
   });

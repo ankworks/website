@@ -101,7 +101,7 @@ describe('explorer UI', () => {
             description: 'Independent software studio.',
             avatar_url: 'https://avatars.githubusercontent.com/u/340385619',
             html_url: 'https://github.com/ankworks',
-            blog: 'https://works.ankb.qzz.io',
+            blog: 'https://projects.ankworks.bond',
             location: 'Vietnam',
             public_repos: 2,
             created_at: '2026-10-10T00:00:00Z',

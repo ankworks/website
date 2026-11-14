@@ -119,7 +119,12 @@ async function sendEmail(env: Env, to: string, subject: string, text: string): P
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'AnkWorks Forge <no-reply@ankb.qzz.io>',
+        // The sending domain must be verified with Resend. RESEND_FROM overrides
+        // it so a domain move (works.ankb.qzz.io → projects.ankworks.bond) does
+        // not need a code change; delivery problems stay best-effort below.
+        from: env.RESEND_FROM && env.RESEND_FROM.includes('@')
+          ? env.RESEND_FROM
+          : 'AnkWorks Forge <no-reply@ankb.qzz.io>',
         to: [to],
         subject,
         text,

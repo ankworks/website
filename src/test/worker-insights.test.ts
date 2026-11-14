@@ -37,7 +37,7 @@ function repoPayload(overrides: Record<string, unknown> = {}): Record<string, un
     default_branch: 'main',
     owner: { login: 'ankworks' },
     license: { spdx_id: 'MIT', name: 'MIT License' },
-    homepage: 'https://works.ankb.qzz.io',
+    homepage: 'https://projects.ankworks.bond',
     has_wiki: true,
     has_issues: true,
     ...overrides,

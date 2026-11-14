@@ -1,32 +1,32 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://works.ankb.qzz.io/</loc>
+    <loc>https://projects.ankworks.bond/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://works.ankb.qzz.io/explore</loc>
+    <loc>https://projects.ankworks.bond/explore</loc>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://works.ankb.qzz.io/repos</loc>
+    <loc>https://projects.ankworks.bond/repos</loc>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://works.ankb.qzz.io/issues</loc>
+    <loc>https://projects.ankworks.bond/issues</loc>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://works.ankb.qzz.io/pulls</loc>
+    <loc>https://projects.ankworks.bond/pulls</loc>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://works.ankb.qzz.io/about</loc>
+    <loc>https://projects.ankworks.bond/about</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>

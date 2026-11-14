@@ -61,7 +61,7 @@ const ORG = {
   description: 'Independent software studio.',
   avatar_url: '/branding/ankworks-logo.webp',
   html_url: 'https://github.com/ankworks',
-  blog: 'https://works.ankb.qzz.io',
+  blog: 'https://projects.ankworks.bond',
   location: 'Vietnam',
   public_repos: 2,
   created_at: '2020-01-01T00:00:00Z',

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { usePixelCursor } from '../hooks';
+import AuthErrorBanner from './AuthErrorBanner';
 import { CommandPalette } from './SearchPage';
 import Navigation from './Navigation';
 import Footer from './Footer';
@@ -26,6 +27,7 @@ export default function Layout() {
       </a>
       <Navigation />
       <CommandPalette />
+      <AuthErrorBanner />
       <main id="main" tabIndex={-1} className="flex-1 focus:outline-none">
         <Outlet />
       </main>

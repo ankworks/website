@@ -108,6 +108,12 @@ export function describeMembership(status: MembershipStatus): string {
       return status.reason === 'unauthenticated'
         ? 'Sign in with GitHub to use write features.'
         : 'Your GitHub account is not a verified member of the AnkWorks organization. You can read public content only.';
+    case 'unverifiable':
+      // Actionable where the cause is something the user can fix.
+      if (status.reason === 'insufficient-scope') {
+        return 'Your GitHub sign-in does not include the read:org permission Forge needs to confirm AnkWorks membership. Sign out and sign in again to grant it.';
+      }
+      return 'AnkWorks membership could not be verified right now. Write actions are disabled until verification succeeds.';
     default:
       return 'AnkWorks membership could not be verified right now. Write actions are disabled until verification succeeds.';
   }

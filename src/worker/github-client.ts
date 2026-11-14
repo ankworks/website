@@ -20,7 +20,7 @@ import { ORG_NAME, isValidRepoName, encodePathSegments } from '../shared/validat
 import { logEvent } from './logging';
 
 export const GITHUB_API_ORIGIN = 'https://api.github.com';
-const USER_AGENT = 'AnkWorks-Website/1.0 (+https://works.ankb.qzz.io)';
+const USER_AGENT = 'AnkWorks-Website/1.0 (+https://projects.ankworks.bond)';
 const GITHUB_API_VERSION = '2022-11-28';
 const GITHUB_VERSION = GITHUB_API_VERSION;
 export const UPSTREAM_TIMEOUT_MS = 8000;

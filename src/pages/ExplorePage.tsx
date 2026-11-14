@@ -1,3 +1,4 @@
+import ScrambleText from '../components/ScrambleText';
 import { Link } from 'react-router-dom';
 import { getRepositories } from '../api/github';
 import { ForkIcon, RepoIcon, StarIcon } from '../components/explorer/icons';
@@ -18,7 +19,9 @@ export default function ExplorePage() {
       <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border pb-5">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.15em] text-muted">AnkWorks organization</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-text">Explore</h1>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-text">
+            <ScrambleText text="Explore" as="span" />
+          </h1>
           <p className="mt-2 max-w-2xl text-sm text-muted">Discover public projects using repository data from GitHub.</p>
         </div>
         <Link to="/repos" className="btn-secondary-sm"><RepoIcon size={14} /> Browse all repositories</Link>

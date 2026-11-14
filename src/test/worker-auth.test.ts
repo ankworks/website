@@ -404,3 +404,78 @@ describe('auth routes', () => {
     });
   });
 });
+
+/**
+ * Sign-in diagnostics: a misconfigured deployment must say WHICH setting is
+ * missing and which callback URL has to be registered, and a callback failure
+ * must carry a distinguishable reason back to the app. Without these, a broken
+ * sign-in looks identical to "the button does nothing".
+ */
+describe('auth diagnostics', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('names every missing sign-in secret without leaking values', async () => {
+    const response = await handleApiRequest(
+      request('/api/auth/login'),
+      env({ GITHUB_APP_CLIENT_ID: undefined, SESSION_ENCRYPTION_KEY: undefined })
+    );
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as { error: string; missing: string[]; callbackUrl: string; message: string };
+    expect(body.error).toBe('AUTH_NOT_CONFIGURED');
+    expect(body.missing).toEqual(['GITHUB_APP_CLIENT_ID', 'SESSION_ENCRYPTION_KEY']);
+    expect(body.callbackUrl).toBe(`${ORIGIN}/api/auth/callback`);
+    // Names only: the secret's value must never appear in the response.
+    expect(JSON.stringify(body)).not.toContain(CLIENT_SECRET);
+  });
+
+  it('flags an encryption key that is too short', async () => {
+    const response = await handleApiRequest(request('/api/auth/login'), env({ SESSION_ENCRYPTION_KEY: 'short' }));
+    const body = (await response.json()) as { missing: string[] };
+    expect(body.missing).toEqual(['SESSION_ENCRYPTION_KEY (shorter than 16 characters)']);
+  });
+
+  it('reports a redirect_uri mismatch as its own callback failure', async () => {
+    const login = await handleApiRequest(request('/api/auth/login'), env());
+    const state = new URL(login.headers.get('Location') ?? '').searchParams.get('state') ?? '';
+    const stateCookie = setCookiesOf(login)
+      .map((cookie) => cookie.split(';')[0])
+      .find((pair) => pair.startsWith(OAUTH_STATE_COOKIE));
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => json({ error: 'redirect_uri_mismatch', error_description: 'The redirect_uri MUST match.' }))
+    );
+
+    const response = await handleApiRequest(
+      request(`/api/auth/callback?code=abc&state=${encodeURIComponent(state)}`, {
+        headers: { Cookie: stateCookie ?? '' },
+      }),
+      env()
+    );
+
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get('Location') ?? '');
+    expect(location.searchParams.get('auth_error')).toBe('OAUTH_REDIRECT_MISMATCH');
+  });
+
+  it('keeps the generic code for other exchange failures', async () => {
+    const login = await handleApiRequest(request('/api/auth/login'), env());
+    const state = new URL(login.headers.get('Location') ?? '').searchParams.get('state') ?? '';
+    const stateCookie = setCookiesOf(login)
+      .map((cookie) => cookie.split(';')[0])
+      .find((pair) => pair.startsWith(OAUTH_STATE_COOKIE));
+
+    vi.stubGlobal('fetch', vi.fn(async () => json({ error: 'bad_verification_code' })));
+
+    const response = await handleApiRequest(
+      request(`/api/auth/callback?code=abc&state=${encodeURIComponent(state)}`, {
+        headers: { Cookie: stateCookie ?? '' },
+      }),
+      env()
+    );
+    expect(new URL(response.headers.get('Location') ?? '').searchParams.get('auth_error')).toBe('OAUTH_EXCHANGE_FAILED');
+  });
+});

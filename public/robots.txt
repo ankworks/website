@@ -1,7 +1,7 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://works.ankb.qzz.io/sitemap.xml
+Sitemap: https://projects.ankworks.bond/sitemap.xml
 
 # Internal API endpoints are not useful for search engines.
 Disallow: /api/
