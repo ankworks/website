@@ -21,15 +21,26 @@ import { useEffect, useRef, useState } from 'react';
 const GLYPHS = '!#$%&*+-/<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
 /**
- * Tuning. The reveal is meant to read as a quick flicker, not a loading state,
- * so it settles in about a third of a second and just a few frames.
+ * Tuning. Long enough to read as "decoding" (one full pass of glyphs on every
+ * character, plus a short tail), short enough to not feel like a loading state:
+ * 14 frames × 26ms ≈ 360ms.
  */
-/** Frame interval in ms (16ms ≈ one 60fps frame). */
-const FRAME_MS = 16;
-/** Total frames before every character has settled. */
-const TOTAL_FRAMES = 12;
+/** Frame interval in ms. Deliberately >16ms: a 60fps churn is too fast to see. */
+const FRAME_MS = 26;
+/** Frames used to sweep the reveal from the first character to the last. */
+const SETTLE_FRAMES = 11;
+/** Extra frames during which the settled tail still flickers. */
+const TAIL_FRAMES = 3;
 
-function scrambleFrame(text: string, progress: number): string {
+/**
+ * One frame of the effect.
+ *
+ * `progress` is the float frontier (in characters) of the left-to-right reveal.
+ * Every character past the frontier is a random glyph — no character is ever
+ * left showing its final form before its turn, which is what made a re-used
+ * heading look like "only half the word scrambles".
+ */
+function scrambleFrame(text: string, progress: number, settled: boolean): string {
   let out = '';
   for (let index = 0; index < text.length; index += 1) {
     const character = text[index];
@@ -37,14 +48,9 @@ function scrambleFrame(text: string, progress: number): string {
       out += ' ';
       continue;
     }
-    // Characters settle left-to-right; the tail keeps churning until the end.
-    if (index < progress) {
-      out += character;
-    } else {
-      out += GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
-    }
+    out += index < progress ? character : GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
   }
-  return out;
+  return settled ? text : out;
 }
 
 export interface ScrambleTextProps {
@@ -71,10 +77,6 @@ export default function ScrambleText({ text, className = '', as = 'span', replay
     };
   }, []);
 
-  // Re-run when the label changes (route change reusing the same heading node).
-  useEffect(() => {
-    setShown(text);
-  }, [text]);
 
   const run = () => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
@@ -84,23 +86,29 @@ export default function ScrambleText({ text, className = '', as = 'span', replay
     }
     window.clearTimeout(timer.current);
     frame.current = 0;
+    // The frontier moves per character, not per word: a long label takes the
+    // same wall-clock time as a short one, so "Pull Requests" is fully garbled
+    // at the start rather than already half-settled.
     const total = text.length;
+    const lastFrame = SETTLE_FRAMES + TAIL_FRAMES;
     const tick = () => {
       if (!mounted.current) return;
       frame.current += 1;
-      // Front-loaded settle: most characters land in the first few frames, so
-      // the word is readable almost immediately and only the tail churns.
-      const eased = 1 - Math.pow(1 - frame.current / TOTAL_FRAMES, 3);
-      const progress = Math.min(total, Math.ceil(eased * total));
-      setShown(scrambleFrame(text, progress));
-      if (frame.current < TOTAL_FRAMES || progress < total) {
-        timer.current = window.setTimeout(tick, FRAME_MS);
-      } else {
-        setShown(text);
-      }
+      const progress = (Math.min(frame.current, SETTLE_FRAMES) / SETTLE_FRAMES) * total;
+      const done = frame.current >= lastFrame;
+      setShown(scrambleFrame(text, progress, done));
+      if (!done) timer.current = window.setTimeout(tick, FRAME_MS);
     };
     tick();
   };
+
+  // Play on every label change — first paint included — so a heading is never
+  // just sitting there fully formed until the pointer happens to cross it.
+  useEffect(() => {
+    run();
+    // `run` is intentionally not a dependency: it closes over `text`, which is.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
 
   const Component = as;
   return (

@@ -78,8 +78,8 @@ describe('ScrambleText', () => {
   it('exposes the real text to assistive tech from the start', () => {
     stubReducedMotion(false);
     const { container } = render(<ScrambleText text="AnkWorks" />);
+    // The label is always readable by assistive tech, even mid-scramble.
     expect(container.querySelector('.sr-only')?.textContent).toBe('AnkWorks');
-    expect(container.querySelector('[data-scramble-output]')?.textContent).toBe('AnkWorks');
   });
 
   it('scrambles on hover and settles back to the real text', () => {
@@ -105,18 +105,46 @@ describe('ScrambleText', () => {
     vi.useRealTimers();
   });
 
-  it('settles in under half a second', () => {
+  it('scrambles every character at the start of the reveal, then settles', () => {
     vi.useFakeTimers();
     stubReducedMotion(false);
     const { container } = render(<ScrambleText text="Pull Requests" />);
+    const output = () => container.querySelector('[data-scramble-output]')?.textContent ?? '';
+
+    // First frame: the whole label is glyphs — no character is pre-settled.
+    act(() => {
+      vi.advanceTimersByTime(26);
+    });
+    expect(output()).not.toBe('Pull Requests');
+    expect(output().replace(/ /g, '')).not.toBe('PullRequests');
+
+    // Fully settled in well under a second.
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(output()).toBe('Pull Requests');
+    vi.useRealTimers();
+  });
+
+  it('replays a full scramble on every hover, even after finishing', () => {
+    vi.useFakeTimers();
+    stubReducedMotion(false);
+    const { container } = render(<ScrambleText text="AnkWorks" />);
     const root = container.querySelector('[data-scramble-text]') as HTMLElement;
     const output = () => container.querySelector('[data-scramble-output]')?.textContent ?? '';
 
     act(() => {
-      fireEvent.pointerEnter(root);
-      vi.advanceTimersByTime(250);
+      vi.advanceTimersByTime(600);
     });
-    expect(output()).toBe('Pull Requests');
+    expect(output()).toBe('AnkWorks');
+
+    act(() => {
+      fireEvent.pointerEnter(root);
+      vi.advanceTimersByTime(26);
+    });
+    // Second pass is a full scramble again, not a no-op.
+    expect(output()).toHaveLength('AnkWorks'.length);
+    expect(output()).not.toBe('AnkWorks');
     vi.useRealTimers();
   });
 
